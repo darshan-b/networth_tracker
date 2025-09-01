@@ -7,6 +7,8 @@ import io
 from plotly.subplots import make_subplots
 from plotly.graph_objs.treemap._marker import Marker
 from pivot_table_view import show_pivot_table
+import os
+
 
 # ----------------------------
 # Streamlit Page Config
@@ -16,7 +18,13 @@ st.set_page_config(page_title="Net Worth Tracker", layout="wide")
 # ----------------------------
 # Load Data
 # ----------------------------
-data = pd.read_csv('Networth.csv')
+# Get the directory of the currently running script (networth.py)
+base_path = os.path.dirname(os.path.abspath(__file__))
+
+# Build full path to CSV
+csv_path = os.path.join(base_path, "Networth.csv")
+
+data = pd.read_csv(csv_path)
 data['Month'] = pd.to_datetime(data['Month'])
 data['Amount'] = data['Amount'].round().astype(int)
 # use this for visual purposes
