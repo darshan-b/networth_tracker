@@ -71,9 +71,37 @@ This Streamlit application provides a comprehensive view of your financial accou
 
 ---
 
-## Future Enhancements
-- Add **KPI cards** with Net Worth, Cash %, Liabilities %, and MoM changes.
-- Add **trend charts** for cumulative net worth over time.
-- Enable **PDF / JPEG exports** of dashboards.
-- Include **benchmarking / target comparisons**.
-- Mobile-friendly responsive layout.
+## Getting Started
+
+Follow these steps to set up the environment and run the Streamlit app.
+
+### 1. Clone the Repository (if needed)
+
+```
+git clone https://github.com/darshan-b/networth_tracker.git
+cd networth_tracker
+```
+
+### 2. Create the Conda Environment
+
+Make sure you have [Anaconda](https://www.anaconda.com/products/distribution) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) installed.
+
+Create the environment from the provided `environment.yml` file:
+
+```
+conda env create -f env.yml
+```
+
+### 3. Activate the Environment
+
+```
+conda activate networth
+```
+
+### 4. Run the Streamlit App
+
+```
+streamlit run src\networth.py
+```
+
+The app will launch in your default web browser, typically at `http://localhost:8501`.
