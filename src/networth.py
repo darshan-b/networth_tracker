@@ -7,8 +7,8 @@ import io
 from plotly.subplots import make_subplots
 from plotly.graph_objs.treemap._marker import Marker
 from pivot_table_view import show_pivot_table
+from detailed_view import show_detailed_view
 import os
-
 
 # ----------------------------
 # Streamlit Page Config
@@ -31,7 +31,6 @@ data['Amount'] = data['Amount'].round().astype(int)
 data['Month_Str'] = data['Month'].dt.strftime('%b-%Y')
 data = data.sort_values('Month')
 
-
 # ----------------------------
 # Shared Filters
 st.header("Filters")
@@ -46,9 +45,150 @@ selected_categories = st.segmented_control("Category", options=categories, selec
 accounts = data[
     data['Account Type'].isin(selected_account_types) & data['Category'].isin(selected_categories)
 ]['Account'].unique().tolist() if selected_account_types and selected_categories else data['Account'].unique()
-selected_accounts = st.sidebar.multiselect("Account", options=accounts, default=accounts, key="acct_name")
 
+# ----------------------------
+# Account Filter in Sidebar
+# ----------------------------
+st.sidebar.markdown("### 🏦 Account Filter")
+
+# Initialize session state for selected accounts
+if 'selected_accounts' not in st.session_state:
+    st.session_state.selected_accounts = accounts.copy()
+
+# Initialize session state for expander states
+if 'expander_states' not in st.session_state:
+    st.session_state.expander_states = {}
+
+# Get latest month data for account values
+latest_month = data['Month'].max()
+
+# Create account info dict with current values and trends
+account_info = {}
+for account in accounts:
+    acct_data = data[data['Account'] == account].sort_values('Month')
+    if len(acct_data) >= 2:
+        current_val = acct_data.iloc[-1]['Amount']
+        prev_val = acct_data.iloc[-2]['Amount']
+        change = current_val - prev_val
+        trend = "📈" if change > 0 else "📉" if change < 0 else "➡️"
+    elif len(acct_data) == 1:
+        current_val = acct_data.iloc[-1]['Amount']
+        change = 0
+        trend = "➡️"
+    else:
+        continue
+    
+    account_info[account] = {
+        'value': current_val,
+        'change': change,
+        'trend': trend,
+        'type': acct_data.iloc[-1]['Account Type']
+    }
+
+# Search box
+search = st.sidebar.text_input("🔍 Search accounts", "", placeholder="Type to filter...")
+
+# Filter accounts based on search
+filtered_accounts = [a for a in accounts if search.lower() in a.lower()] if search else accounts
+
+# Group accounts by type first (needed for expand/collapse)
+grouped_accounts = {}
+for acc in filtered_accounts:
+    acct_type = account_info.get(acc, {}).get('type', 'Unknown')
+    if acct_type not in grouped_accounts:
+        grouped_accounts[acct_type] = []
+    grouped_accounts[acct_type].append(acc)
+
+# Initialize expander states for any new account types
+for acct_type in grouped_accounts.keys():
+    if acct_type not in st.session_state.expander_states:
+        st.session_state.expander_states[acct_type] = True  # Default to expanded
+
+# Check if most expanders are currently expanded
+expanded_count = sum(1 for state in st.session_state.expander_states.values() if state)
+total_count = len(st.session_state.expander_states)
+mostly_expanded = expanded_count > total_count / 2 if total_count > 0 else True
+
+# Quick actions - 3 columns now
+col1, col2, col3 = st.sidebar.columns(3)
+with col1:
+    if st.button("✅", use_container_width=True, help="Select all accounts"):
+        st.session_state.selected_accounts = accounts.copy()
+with col2:
+    if st.button("❌", use_container_width=True, help="Clear all accounts"):
+        st.session_state.selected_accounts = []
+with col3:
+    # Toggle button - shows opposite of current state
+    toggle_icon = "➖" if mostly_expanded else "➕"
+    toggle_help = "Collapse all groups" if mostly_expanded else "Expand all groups"
+    if st.button(toggle_icon, use_container_width=True, help=toggle_help):
+        new_state = not mostly_expanded
+        for acct_type in grouped_accounts.keys():
+            st.session_state.expander_states[acct_type] = new_state
+
+# Grouped display
+for acct_type in sorted(grouped_accounts.keys()):
+    accts = grouped_accounts[acct_type]
+    is_expanded = st.session_state.expander_states.get(acct_type, True)
+    
+    with st.sidebar.expander(f"📁 {acct_type} ({len(accts)})", expanded=is_expanded):
+        # Group controls - also compact
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅", use_container_width=True, key=f"all_{acct_type}", help=f"Select all {acct_type}"):
+                # Add all accounts from this group
+                current = set(st.session_state.selected_accounts)
+                current.update(accts)
+                st.session_state.selected_accounts = list(current)
+        with col2:
+            if st.button("❌", use_container_width=True, key=f"none_{acct_type}", help=f"Clear all {acct_type}"):
+                # Remove all accounts from this group
+                st.session_state.selected_accounts = [a for a in st.session_state.selected_accounts if a not in accts]
+        
+        # Individual checkboxes
+        for acc in accts:
+            info = account_info.get(acc, {})
+            label = f"{acc} ({info.get('trend', '➡️')} ${info.get('value', 0):,.0f})" if info else acc
+            is_selected = acc in st.session_state.selected_accounts
+            
+            if st.checkbox(label, value=is_selected, key=f"check_{acc}"):
+                if acc not in st.session_state.selected_accounts:
+                    st.session_state.selected_accounts.append(acc)
+            else:
+                if acc in st.session_state.selected_accounts:
+                    st.session_state.selected_accounts.remove(acc)
+
+selected_accounts = st.session_state.selected_accounts
+
+# Summary statistics
+st.sidebar.divider()
+count = len(selected_accounts)
+total = len(accounts)
+
+if count > 0:
+    selected_value = sum(account_info.get(a, {}).get('value', 0) for a in selected_accounts)
+    total_value = sum(account_info.get(a, {}).get('value', 0) for a in accounts)
+    
+    if count == total:
+        st.sidebar.success(f"✓ {count} of {total} selected")
+    else:
+        st.sidebar.info(f"✓ {count} of {total} selected")
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("Selected", f"${selected_value:,.0f}")
+    with col2:
+        pct = (selected_value / total_value * 100) if total_value != 0 else 0
+        st.metric("% of Total", f"{pct:.1f}%")
+else:
+    st.sidebar.error("⚠️ No accounts selected")
+
+if search:
+    st.sidebar.caption(f"🔍 {len(filtered_accounts)} matches")
+
+# ----------------------------
 # Apply filters
+# ----------------------------
 filtered_df = data[
     data['Account Type'].isin(selected_account_types) &
     data['Category'].isin(selected_categories) &
@@ -57,72 +197,12 @@ filtered_df = data[
 
 tab_1, tab_2, tab_3, tab_4 = st.tabs(["Detailed View", "Summarized Table", 'Line Chart', 'KPI'])
 
-
-def round_to_k(amount):
-    if amount >= 1000:
-        return f"{amount/1000:.1f}k"  # Round to 1 decimal place and add 'k'
-    else:
-        return f"{amount:.0f}"
             
-
 # -----------------------------------
 # Detailed View of Networth Over Time
 # -----------------------------------
 with tab_1:
-    st.header("Net Worth Over Time")
-
-    # Aggregate for stacked bar
-    agg_df = filtered_df.groupby(['Month', 'Month_Str', 'Category'], as_index=False)['Amount'].sum()
-    totals_df = filtered_df.groupby(['Month', 'Month_Str'], as_index=False)['Amount'].sum()
-
-    # Plotly stacked bar chart
-    fig = px.bar(
-        agg_df,
-        x='Month',
-        y='Amount',
-        color='Category',
-        text=None,
-        barmode='stack',
-        hover_data={'Month': False, 'Amount': True, 'Category': True},
-        color_discrete_sequence=px.colors.qualitative.Light24
-    )
-
-    # Add total labels
-    fig.add_trace(
-        go.Scatter(
-            x=totals_df['Month'],
-            y=totals_df['Amount'],
-            text=totals_df['Amount'].apply(lambda x: round_to_k(x)),
-            textposition='top center',
-            mode='text',
-            showlegend=False,
-            textfont=dict(size=14, color='black', family="Arial", weight='bold'),
-            name='Total Amount'
-        )
-    )
-
-    fig.update_layout(
-        title="Net Worth Over Time",
-        xaxis=dict(tickvals=totals_df['Month'], ticktext=totals_df['Month_Str'], title='Month', tickangle=90),
-        yaxis=dict(title='Amount', tickprefix='$'),
-        legend_title="Category",
-        hovermode="x unified"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Write to buffer
-    buffer = io.StringIO()
-    fig.write_html(buffer, full_html=False)
-    buffer.seek(0)
-
-    # Create a download button for the HTML file
-    st.download_button(
-        label="Download as HTML",
-        data=buffer.getvalue(),
-        file_name="net_worth_over_time.html",
-        mime="application/vnd.ms-html"
-    )
+    show_detailed_view(filtered_df)
 
 
 # ----------------------------
@@ -135,54 +215,66 @@ with tab_2:
 with tab_3:
     st.header("Month-over-Month Progress")
 
-    grouped_df = filtered_df.groupby('Month')['Amount'].sum().reset_index()
-    grouped_df['MoM_Pct_Change'] = grouped_df['Amount'].pct_change() * 100  # % change
+    # -----------------------------
+    # Prepare data for Assets & Liabilities
+    # -----------------------------
+    assets_df = filtered_df[filtered_df['Account Type'] != 'Liability'].groupby('Month')['Amount'].sum().reset_index()
+    liabilities_df = filtered_df[filtered_df['Account Type'] == 'Liability'].groupby('Month')['Amount'].sum().reset_index()
+
+    grouped_df = assets_df.merge(liabilities_df, on='Month', how='outer', suffixes=('_Assets', '_Liabilities')).fillna(0)
+    grouped_df['Total'] = grouped_df['Amount_Assets'] - grouped_df['Amount_Liabilities']  # Net Worth
+
+    # Calculate MoM % Change based on Net Worth or Total Amount
+    grouped_df['MoM_Pct_Change'] = grouped_df['Total'].pct_change() * 100
     grouped_df['MoM_Pct_Change'] = grouped_df['MoM_Pct_Change'].round(2)
-    grouped_df['Pct_Color'] = grouped_df['MoM_Pct_Change'].apply(lambda x: 'green' if x >=0 else 'red')
+    grouped_df['Pct_Color'] = grouped_df['MoM_Pct_Change'].apply(lambda x: 'green' if x >= 0 else 'red')
+
     # -----------------------------
-    # Line Chart
-    # -----------------------------
-    x = grouped_df['Month']
-    y = grouped_df['Amount']
-    y_text = [f"{val/1000:.0f}k" for val in y]  # round to k
-    
     # Create figure
-    fig = go.Figure()
-    
-    fig.add_trace(
-        go.Scatter(
-            x=x,
-            y=y,
-            mode='lines+markers+text',
-            text=y_text,
-            textposition='top center',  # move text above markers
-            textfont=dict(size=12, color='black', family='Arial, bold'),
-            line=dict(color='blue', width=3),
-            marker=dict(size=8),
-            name='Total Amount'
-        )
-    )
-    
-    # Add MoM % change as secondary y-axis
-    fig.add_trace(
-        go.Scatter(
-            x=grouped_df['Month'],
-            y=grouped_df['MoM_Pct_Change'],
-            mode='lines+markers+text',
-            text=grouped_df['MoM_Pct_Change'].apply(lambda x: f"{x:.2f}%"),
-            textposition='bottom center',
-            textfont=dict(color=grouped_df['Pct_Color'], size=12),
-            line=dict(color='gray', dash='dot'),
-            marker=dict(size=8, color=grouped_df['Pct_Color']),
-            name='% Change',
-            yaxis='y2'
-        )
-    )
-    
     # -----------------------------
-    # Update layout with secondary y-axis
+    fig = go.Figure()
+
+    # Assets Area
+    fig.add_trace(go.Scatter(
+        x=grouped_df['Month'],
+        y=grouped_df['Amount_Assets'],
+        mode='lines',
+        name='Assets',
+        line=dict(color='green'),
+        fill='tozeroy',
+        opacity=0.6
+    ))
+
+    # Liabilities Area
+    fig.add_trace(go.Scatter(
+        x=grouped_df['Month'],
+        y=grouped_df['Amount_Liabilities'],
+        mode='lines',
+        name='Liabilities',
+        line=dict(color='red'),
+        fill='tozeroy',
+        opacity=0.6
+    ))
+
+    # MoM % change line on secondary axis
+    fig.add_trace(go.Scatter(
+        x=grouped_df['Month'],
+        y=grouped_df['MoM_Pct_Change'],
+        mode='lines+markers+text',
+        text=grouped_df['MoM_Pct_Change'].apply(lambda x: f"{x:.2f}%"),
+        textposition='bottom center',
+        textfont=dict(color=grouped_df['Pct_Color'], size=12),
+        line=dict(color='gray', dash='dot'),
+        marker=dict(size=8, color=grouped_df['Pct_Color']),
+        name='% Change',
+        yaxis='y2'
+    ))
+
+    # -----------------------------
+    # Layout
     # -----------------------------
     fig.update_layout(
+        title="Assets vs Liabilities with MoM Change",
         xaxis_title="Month",
         yaxis=dict(title="Amount"),
         yaxis2=dict(
@@ -191,11 +283,11 @@ with tab_3:
             side='right',
             showgrid=False
         ),
-        xaxis=dict(tickangle=-45),
+        xaxis=dict(tickangle=-90),
         hovermode="x unified",
         template="plotly"
     )
-    
+
     st.plotly_chart(fig, use_container_width=True)
 
 
