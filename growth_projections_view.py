@@ -237,8 +237,8 @@ def show_growth_projections(filtered_df):
         goal_amount = st.number_input(
             "Target Net Worth ($)",
             min_value=0,
-            value=max(1000000, int(current_nw * 1.5)),
-            step=10000,
+            value=500000,
+            step=50000,
             format="%d",
             help="Your target net worth goal"
         )
@@ -263,8 +263,8 @@ def show_growth_projections(filtered_df):
         monthly_contribution = st.number_input(
             "Monthly Contribution ($)",
             min_value=0,
-            value=0,
-            step=100,
+            value=2500,
+            step=500,
             help="Additional amount you'll invest each month"
         )
     
@@ -273,7 +273,7 @@ def show_growth_projections(filtered_df):
             "Expected Annual Return (%)",
             min_value=0.0,
             max_value=50.0,
-            value=7.0,
+            value=10.0,
             step=0.5,
             help="Expected average annual return rate (e.g., 7% for stock market average)"
         )
