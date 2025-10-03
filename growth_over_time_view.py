@@ -75,9 +75,9 @@ def show_growth_over_time(filtered_df):
         
         with col1:
             st.metric("Current Net Worth", f"${current_nw:,.0f}", 
-                     f"{mom_change:,.0f} ({mom_pct:+.1f}%)")
+                     f"{mom_change:,.0f} ({mom_pct:+.2f}%)")
         with col2:
-            st.metric("Total Growth", f"${total_change:,.0f}", f"{total_pct:+.1f}%")
+            st.metric("Total Growth", f"${total_change:,.0f}", f"{total_pct:+.2f}%")
         with col3:
             st.metric("Months Tracked", len(totals_df))
         with col4:
@@ -135,7 +135,7 @@ def show_growth_over_time(filtered_df):
     # Calculate MoM % change
     totals_df['MoM_Pct'] = totals_df['Amount'].pct_change() * 100
     totals_df['MoM_Pct_Text'] = totals_df['MoM_Pct'].apply(
-        lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%" if pd.notna(x) else ""
+        lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if pd.notna(x) else ""
     )
     totals_df['MoM_Color'] = totals_df['MoM_Pct'].apply(
         lambda x: 'green' if x >= 0 else 'red' if pd.notna(x) else 'gray'
