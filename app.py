@@ -9,6 +9,7 @@ from ui.dashboard import render_dashboard
 from growth_over_time_view import show_growth_over_time
 from pivot_table_view import show_pivot_table
 from growth_projections_view import show_growth_projections
+from pygwalker.api.streamlit import StreamlitRenderer
 
 
 def main():
@@ -38,8 +39,14 @@ def main():
     filtered_df = filter_data(data, selected_account_types, selected_categories, selected_accounts)
     
     # Create tabs
-    tab_1, tab_2, tab_combined, tab_4 = st.tabs(["Net Worth Over Time", "Summarized Table", "Dashboard", "Growth Projections"])
+    tab_1, tab_2, tab_combined, tab_4, tab_5 = st.tabs(["Net Worth Over Time", "Summarized Table", "Dashboard", "Growth Projections", "Data Explorer"])
     
+    @st.cache_resource
+    def get_pyg_renderer() -> "StreamlitRenderer":
+        # If you want to use feature of saving chart config, set `spec_io_mode="rw"`
+        return StreamlitRenderer(data, spec_io_mode="rw")
+
+
     with tab_1:
         show_growth_over_time(filtered_df)
     
@@ -51,6 +58,13 @@ def main():
 
     with tab_4:
         show_growth_projections(filtered_df)
+
+    with tab_5:
+        renderer = get_pyg_renderer()
+        renderer.explorer()
+
+
+
 
 
 if __name__ == "__main__":
