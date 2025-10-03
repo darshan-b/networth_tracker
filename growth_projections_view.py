@@ -82,6 +82,9 @@ def format_time_to_goal(months):
 
 def generate_projection_data(current_value, goal_amount, monthly_contribution, annual_return_rate, compound_freq, max_months=600):
     """Generate month-by-month projection data for visualization."""
+    import pandas as pd
+    from datetime import datetime
+    
     annual_rate = annual_return_rate / 100
     
     if compound_freq == 'monthly':
@@ -90,6 +93,7 @@ def generate_projection_data(current_value, goal_amount, monthly_contribution, a
         monthly_rate = (1 + annual_rate) ** (1/12) - 1
     
     months = []
+    dates = []
     balances = []
     contributions_cumulative = []
     growth_cumulative = []
@@ -97,8 +101,12 @@ def generate_projection_data(current_value, goal_amount, monthly_contribution, a
     balance = current_value
     total_contributions = 0
     
+    # Generate actual future dates starting from today
+    today = pd.Timestamp.today()
+    
     for month in range(max_months + 1):
         months.append(month)
+        dates.append(today + pd.DateOffset(months=month))
         balances.append(balance)
         contributions_cumulative.append(total_contributions)
         growth_cumulative.append(balance - current_value - total_contributions)
@@ -111,6 +119,7 @@ def generate_projection_data(current_value, goal_amount, monthly_contribution, a
     
     return pd.DataFrame({
         'Month': months,
+        'Date': dates,
         'Balance': balances,
         'Contributions': contributions_cumulative,
         'Growth': growth_cumulative
@@ -124,42 +133,42 @@ def create_breakdown_chart(projection_df, current_value):
     # Calculate "Your Money" (starting balance + contributions)
     your_money = [current_value + row['Contributions'] for row in projection_df.to_dict('records')]
     
+    # Your Money (starting + contributions as one layer)
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df['Date'],
+            y=your_money,
+            name='Total Principal',
+            mode='lines',
+            stackgroup='one',
+            line=dict(width=4, color='rgba(132, 193, 117, 1)'),
+            fillcolor='rgba(132, 193, 117, 0.4)',  # Light green
+            hovertemplate='<b>Your Money</b><br>$%{y:,.0f}<extra></extra>'
+        )
+    )
+    
     # Investment Growth (bottom layer)
     fig.add_trace(
         go.Scatter(
-            x=projection_df['Month'],
+            x=projection_df['Date'],
             y=projection_df['Growth'],
             name='Investment Growth',
             mode='lines',
             stackgroup='one',
-            line=dict(width=0),
-            fillcolor='rgba(99, 179, 237, 0.6)',  # Light blue
+            line=dict(width=4, color='rgba(99, 179, 237, 1)'),
+            fillcolor='rgba(99, 179, 237, 0.4)',  # Light blue
             hovertemplate='<b>Investment Growth</b><br>$%{y:,.0f}<extra></extra>'
-        )
-    )
-    
-    # Your Money (starting + contributions as one layer)
-    fig.add_trace(
-        go.Scatter(
-            x=projection_df['Month'],
-            y=your_money,
-            name='Your Money',
-            mode='lines',
-            stackgroup='one',
-            line=dict(width=0),
-            fillcolor='rgba(132, 193, 117, 0.6)',  # Light green
-            hovertemplate='<b>Your Money</b><br>$%{y:,.0f}<extra></extra>'
         )
     )
     
     # Add a line showing total balance
     fig.add_trace(
         go.Scatter(
-            x=projection_df['Month'],
+            x=projection_df['Date'],
             y=projection_df['Balance'],
             name='Total Balance',
             mode='lines',
-            line=dict(color='rgb(50, 50, 50)', width=2),
+            line=dict(width=0, color='rgba(0,0,0,0)'),
             hovertemplate='<b>Total Balance</b><br>$%{y:,.0f}<extra></extra>'
         )
     )
@@ -348,7 +357,7 @@ def show_growth_projections(filtered_df):
     
     # Detailed projection table
     with st.expander("View Detailed Projection Table"):
-        # Sample key milestones
+       # Sample key milestones
         if len(projection_df) > 12:
             # Show quarterly snapshots
             milestone_rows = projection_df[projection_df['Month'] % 3 == 0].copy()
@@ -356,7 +365,8 @@ def show_growth_projections(filtered_df):
             milestone_rows = projection_df.copy()
         
         # Format for display
-        display_df = milestone_rows.copy()
+        display_df = milestone_rows[['Date', 'Balance', 'Contributions', 'Growth']].copy()
+        display_df['Date'] = display_df['Date'].dt.strftime('%b %Y')
         display_df['Balance'] = display_df['Balance'].apply(lambda x: f"${x:,.0f}")
         display_df['Contributions'] = display_df['Contributions'].apply(lambda x: f"${x:,.0f}")
         display_df['Growth'] = display_df['Growth'].apply(lambda x: f"${x:,.0f}")
