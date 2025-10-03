@@ -32,27 +32,6 @@ def color_pct(value):
     return f"<span style='color:{color};'>{arrow} {sign}{value:.2f}%</span>"
 
 
-def render_kpi(col, title, value, pct_text="", separator=False):
-    """
-    Render a KPI in a Streamlit column with optional vertical separator.
-
-    Args:
-        col: Streamlit column object (from st.columns).
-        title: KPI title (str).
-        value: Main value (str or number).
-        pct_text: Percent text, optionally color-coded (str).
-        separator: Whether to show vertical line on the right (bool).
-    """
-    separator_style = "border-right:2px solid #ddd; padding-right:10px;" if separator else ""
-    col.markdown(f"""
-        <div style="{separator_style}">
-            <div style='font-size:14px; color:#555; font-weight:bold;'>{title}</div>
-            <div style='font-size:24px; font-weight:bold; margin-top:3px;'>{value}</div>
-            <div style='font-size:14px; margin-top:3px;'>{pct_text}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-
 def add_kpi_metrics(pivot_df, month_cols, comparison_type="Month"):
     """
     Display key net worth metrics in Streamlit.
@@ -82,10 +61,14 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Month"):
     comparison_label = {"Month": "MoM", "Quarter": "QoQ", "Year": "YoY"}[comparison_type]
     period_label = {"Month": "Month", "Quarter": "Quarter", "Year": "Year"}[comparison_type]
     
-    render_kpi(col1, "Current Net Worth", f"${last_value:,.0f}", color_pct(pct_change) + f" {comparison_label}", separator=True)
-    render_kpi(col2, "Total Change", f"${total_progress:,.0f}", color_pct(total_progress_pct), separator=True)
-    render_kpi(col3, f"{period_label}s Tracked", f"{len(month_cols)}", "", separator=True)
-    render_kpi(col4, "Starting Net Worth", f"${first_value:,.0f}", "", separator=False)
+    with col1:
+        st.metric("Current Net Worth", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})")
+    with col2:
+        st.metric("Total Change", f"${total_progress:,.0f}", f"{total_progress_pct:,.2f}%")
+    with col3:
+        st.metric(f"{period_label}s Tracked", f"{len(month_cols)}")
+    with col4:
+        st.metric("Starting Net Worth", f"${first_value:,.0f}")
 
 
 def create_pivot_table(filtered_df, rollup=True, comparison_type="Month"):
