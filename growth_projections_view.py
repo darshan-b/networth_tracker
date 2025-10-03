@@ -121,35 +121,10 @@ def create_breakdown_chart(projection_df, current_value):
     """Create stacked area chart showing contribution breakdown."""
     fig = go.Figure()
     
-    # Starting balance (constant)
-    fig.add_trace(
-        go.Scatter(
-            x=projection_df['Month'],
-            y=[current_value] * len(projection_df),
-            name='Starting Balance',
-            mode='lines',
-            stackgroup='one',
-            line=dict(width=0.5, color='#2ca02c'),
-            fillcolor='#2ca02c',
-            hovertemplate='Starting: $%{y:,.0f}<extra></extra>'
-        )
-    )
+    # Calculate "Your Money" (starting balance + contributions)
+    your_money = [current_value + row['Contributions'] for row in projection_df.to_dict('records')]
     
-    # Contributions
-    fig.add_trace(
-        go.Scatter(
-            x=projection_df['Month'],
-            y=projection_df['Contributions'],
-            name='Contributions',
-            mode='lines',
-            stackgroup='one',
-            line=dict(width=0.5, color='#ff7f0e'),
-            fillcolor='#ff7f0e',
-            hovertemplate='Contributions: $%{y:,.0f}<extra></extra>'
-        )
-    )
-    
-    # Growth
+    # Investment Growth (bottom layer)
     fig.add_trace(
         go.Scatter(
             x=projection_df['Month'],
@@ -157,9 +132,35 @@ def create_breakdown_chart(projection_df, current_value):
             name='Investment Growth',
             mode='lines',
             stackgroup='one',
-            line=dict(width=0.5, color='#1f77b4'),
-            fillcolor='#1f77b4',
-            hovertemplate='Growth: $%{y:,.0f}<extra></extra>'
+            line=dict(width=0),
+            fillcolor='rgba(99, 179, 237, 0.6)',  # Light blue
+            hovertemplate='<b>Investment Growth</b><br>$%{y:,.0f}<extra></extra>'
+        )
+    )
+    
+    # Your Money (starting + contributions as one layer)
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df['Month'],
+            y=your_money,
+            name='Your Money',
+            mode='lines',
+            stackgroup='one',
+            line=dict(width=0),
+            fillcolor='rgba(132, 193, 117, 0.6)',  # Light green
+            hovertemplate='<b>Your Money</b><br>$%{y:,.0f}<extra></extra>'
+        )
+    )
+    
+    # Add a line showing total balance
+    fig.add_trace(
+        go.Scatter(
+            x=projection_df['Month'],
+            y=projection_df['Balance'],
+            name='Total Balance',
+            mode='lines',
+            line=dict(color='rgb(50, 50, 50)', width=2),
+            hovertemplate='<b>Total Balance</b><br>$%{y:,.0f}<extra></extra>'
         )
     )
     
@@ -169,7 +170,14 @@ def create_breakdown_chart(projection_df, current_value):
         yaxis_title="Amount ($)",
         template='plotly_white',
         height=400,
-        hovermode='x unified'
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     fig.update_yaxes(tickprefix='$', tickformat=',.0f')
