@@ -17,10 +17,7 @@ from ui.components.filters import (
     render_networth_sidebar_filters,
     render_expense_date_filter
 )
-from ui.views.dashboard import render_dashboard
-from ui.views.growth_over_time_view import show_growth_over_time
-from ui.views.pivot_table_view import show_pivot_table
-from ui.views.growth_projections_view import show_growth_projections
+from ui.views.networth_tracker_view import show_networth_tracker 
 from ui.views.expense_tracker_view import show_expense_tracker
 
 # Constants
@@ -31,30 +28,6 @@ LAYOUT = "wide"
 # Navigation options
 NAV_NETWORTH = "Net Worth Tracker"
 NAV_EXPENSE = "Expense Tracker"
-
-# Tab names for Net Worth Tracker
-TAB_GROWTH = "Net Worth Over Time"
-TAB_TABLE = "Summarized Table"
-TAB_DASHBOARD = "Dashboard"
-TAB_PROJECTIONS = "Growth Projections"
-TAB_EXPLORER = "Data Explorer"
-
-
-@st.cache_resource
-def get_pyg_renderer(data) -> Optional[StreamlitRenderer]:
-    """Initialize PyGWalker renderer with caching.
-    
-    Args:
-        data: DataFrame to visualize
-        
-    Returns:
-        StreamlitRenderer instance or None if initialization fails
-    """
-    try:
-        return StreamlitRenderer(data, spec_io_mode="rw")
-    except Exception as e:
-        st.error(f"Failed to initialize data explorer: {str(e)}")
-        return None
 
 
 def render_networth_tracker() -> None:
@@ -98,53 +71,8 @@ def render_networth_tracker() -> None:
             st.warning("No data available for the selected filters.")
             return
         
-        # Create tabs
-        tabs = st.tabs([TAB_GROWTH, TAB_TABLE, TAB_DASHBOARD, TAB_PROJECTIONS, TAB_EXPLORER])
-        
-        with tabs[0]:
-            try:
-                show_growth_over_time(filtered_df)
-            except Exception as e:
-                st.error(f"Failed to display growth chart: {str(e)}")
-                with st.expander("Error Details"):
-                    st.exception(e)
-        
-        with tabs[1]:
-            try:
-                show_pivot_table(filtered_df)
-            except Exception as e:
-                st.error(f"Failed to display pivot table: {str(e)}")
-                with st.expander("Error Details"):
-                    st.exception(e)
-        
-        with tabs[2]:
-            try:
-                render_dashboard(filtered_df)
-            except Exception as e:
-                st.error(f"Failed to display dashboard: {str(e)}")
-                with st.expander("Error Details"):
-                    st.exception(e)
-
-        with tabs[3]:
-            try:
-                show_growth_projections(filtered_df)
-            except Exception as e:
-                st.error(f"Failed to display projections: {str(e)}")
-                with st.expander("Error Details"):
-                    st.exception(e)
-
-        with tabs[4]:
-            try:
-                renderer = get_pyg_renderer(data)
-                if renderer:
-                    renderer.explorer()
-                else:
-                    st.warning("Data explorer is not available.")
-            except Exception as e:
-                st.error(f"Failed to display data explorer: {str(e)}")
-                with st.expander("Error Details"):
-                    st.exception(e)
-                
+        show_networth_tracker(filtered_df, data)
+                  
     except Exception as e:
         st.error(f"An error occurred while loading the Net Worth Tracker: {str(e)}")
         with st.expander("Error Details"):
