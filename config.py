@@ -7,17 +7,17 @@ class ChartConfig:
     """Chart styling and layout configuration."""
     
     # Default dimensions
-    HEIGHT = 400
+    HEIGHT = None
     WIDTH = None  # None = responsive width
     
     # Plotly template
-    TEMPLATE = 'plotly_white'
+    TEMPLATE = 'plotly_dark'
     
     # Font settings
     FONT = {
         'family': 'Arial, sans-serif',
         'size': 12,
-        'color': '#2c3e50'
+        'color': 'black'
     }
     
     # Margins
@@ -31,7 +31,7 @@ class ChartConfig:
     # Chart-specific settings
     BAR_LINE_WIDTH = 1
     BAR_LINE_COLOR = 'rgba(0,0,0,0.1)'
-    DONUT_HOLE_SIZE = 0.4
+    DONUT_HOLE_SIZE = 0.55
     LINE_WIDTH = 3
     MARKER_SIZE = 8
     
@@ -70,7 +70,7 @@ class ColorSchemes:
     ]
     
     # Categorical colors (for categories)
-    CATEGORICAL = px.colors.qualitative.Set3
+    CATEGORICAL = px.colors.qualitative.Dark2
     
     # Status colors
     SUCCESS = '#4CAF50'

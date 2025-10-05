@@ -303,7 +303,11 @@ def calculate_category_spending(df: pd.DataFrame) -> pd.DataFrame:
     )
     category_spending[ColumnNames.AMOUNT] = category_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     category_spending = category_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
-    
+    category_spending = (
+        category_spending.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+    )
+
     return category_spending
 
 

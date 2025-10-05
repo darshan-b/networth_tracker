@@ -5,7 +5,8 @@ import plotly.express as px
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from config import ChartConfig, ColorSchemes
-
+import plotly.io as pio
+pio.templates.default = 'plotly_dark' 
 
 def create_bar_chart(
     data: pd.Series,
@@ -132,10 +133,10 @@ def create_pie_chart(
             colors=colors,
             line=dict(color='white', width=2)
         ),
-        textposition='auto',
-        textinfo='label+percent',
-        textfont=dict(size=11),
-        hovertemplate='<b>%{label}</b><br>$%{value:,.0f}<br>%{percent}<extra></extra>'
+        textposition='inside',
+        textinfo='percent',
+        hovertemplate='<span style="color:black;"><b>%{label}</b><br>Amount: $%{value:,.0f}<br>As Percent: %{percent}</span>',
+        insidetextorientation='radial'
     ))
     
     layout_config = {
@@ -148,17 +149,17 @@ def create_pie_chart(
     
     if show_legend:
         layout_config['legend'] = dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.2,
-            xanchor="center",
-            x=0.5
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1
         )
     
     if title:
         layout_config['title'] = title
     
-    fig.update_layout(**layout_config)
+    fig.update_layout(**layout_config, uniformtext_minsize=16, uniformtext_mode='hide')
     
     return fig
 
@@ -169,21 +170,25 @@ def create_line_chart(
     y: str,
     color: Optional[str] = None,
     title: Optional[str] = None,
+    x_title: Optional[str] = None,
+    y_title: Optional[str] = None,
     markers: bool = True,
     **kwargs
 ) -> go.Figure:
     """
     Create a line chart.
-    
+   
     Args:
         data: DataFrame with data
         x: Column name for x-axis
         y: Column name for y-axis
         color: Optional column name for color grouping
         title: Chart title
+        x_title: X-axis title (defaults to column name if None)
+        y_title: Y-axis title (defaults to column name if None)
         markers: Whether to show markers on the line
-        **kwargs: Additional arguments
-        
+        **kwargs: Additional arguments (height, line_width, marker_size)
+       
     Returns:
         Plotly figure object
     """
@@ -198,10 +203,11 @@ def create_line_chart(
     
     fig.update_layout(
         height=kwargs.get('height', ChartConfig.HEIGHT),
-        template=ChartConfig.TEMPLATE,
         font=ChartConfig.FONT,
         hovermode=ChartConfig.HOVER_MODE,
-        margin=ChartConfig.MARGIN
+        margin=ChartConfig.MARGIN,
+        xaxis_title=x_title if x_title else x,
+        yaxis_title=y_title if y_title else y
     )
     
     fig.update_traces(

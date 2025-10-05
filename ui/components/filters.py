@@ -15,6 +15,7 @@ from data.filters import (
     filter_by_date_range,
     DATE_RANGE_CUSTOM
 )
+from constants import ColumnNames
 
 # Constants
 MIN_ACCOUNTS_WARNING = 0
@@ -35,7 +36,7 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
         ValueError: If data is invalid
     """
     try:        
-        required_columns = ['account_type', 'category']
+        required_columns = [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY]
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
@@ -43,36 +44,36 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
             return [], []
         
         # Render account_type filter
-        acct_types = sorted(data['account_type'].unique())
+        acct_types = sorted(data[ColumnNames.ACCOUNT_TYPE].unique())
         
         if not acct_types:
-            st.warning(" No account_types found in data.")
+            st.warning(" No Account Type found in data.")
             return [], []
         
         selected_account_types = st.segmented_control(
-            "account_type", 
+            ColumnNames.ACCOUNT_TYPE, 
             options=acct_types, 
             selection_mode="multi", 
             default=acct_types,
-            help="Filter by account_type (e.g., Checking, Savings, Investment)"
+            help="Filter by Account Type (e.g., Checking, Savings, Investment)"
         )
         
         # Render category filter based on selected account_types
         if selected_account_types:
-            categories = sorted(data[data['account_type'].isin(selected_account_types)]['category'].unique())
+            categories = sorted(data[data[ColumnNames.ACCOUNT_TYPE].isin(selected_account_types)][ColumnNames.CATEGORY].unique())
         else:
-            categories = sorted(data['category'].unique())
+            categories = sorted(data[ColumnNames.CATEGORY].unique())
         
         if not categories:
-            st.warning(" No categories available for the selected account_types.")
+            st.warning(" No Categories available for the selected Account Type.")
             return selected_account_types or [], []
         
         selected_categories = st.segmented_control(
-            "category", 
+            ColumnNames.CATEGORY, 
             options=categories, 
             selection_mode="multi", 
             default=categories,
-            help="Filter by category (e.g., Banking, Retirement, Real Estate)"
+            help="Filter by Category (e.g., Banking, Retirement, Real Estate)"
         )
         
         return selected_account_types or [], selected_categories or []
@@ -97,7 +98,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         ValueError: If inputs are invalid
     """
     try:
-        st.sidebar.markdown("### account Filter")
+        st.sidebar.markdown("### Account Filter")
         
         # Validate inputs
         if data is None or data.empty:
@@ -105,7 +106,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
             return []
         
         if not accounts:
-            st.sidebar.warning(" No accounts available to display.")
+            st.sidebar.warning(" No Accounts available to display.")
             return []
         
         # Initialize session state
@@ -117,17 +118,17 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         
         # Search box
         search = st.sidebar.text_input(
-            "Search accounts",
+            "Search Accounts",
             "",
             placeholder=SEARCH_PLACEHOLDER,
-            help="Filter accounts by name"
+            help="Filter Accounts by Name"
         )
         
         # Filter accounts based on search
         if search:
             filtered_accounts = [a for a in accounts if search.lower() in a.lower()]
             if not filtered_accounts:
-                st.sidebar.warning(f" No accounts match '{search}'")
+                st.sidebar.warning(f" No Accounts match '{search}'")
         else:
             filtered_accounts = accounts
         
@@ -140,7 +141,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
             grouped_accounts[acct_type].append(acc)
         
         if not grouped_accounts:
-            st.sidebar.warning(" No accounts to display.")
+            st.sidebar.warning(" No Accounts to display.")
             return []
         
         # Initialize expander states for new account_types
@@ -156,12 +157,12 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         # Quick actions
         col1, col2, col3 = st.sidebar.columns(3)
         with col1:
-            if st.button("Select All", use_container_width=True, help="Select all accounts"):
+            if st.button("Select All", use_container_width=True, help="Select all Accounts"):
                 st.session_state.selected_accounts = accounts.copy()
                 st.rerun()
                 
         with col2:
-            if st.button("Clear All", use_container_width=True, help="Deselect all accounts"):
+            if st.button("Clear All", use_container_width=True, help="Deselect all Accounts"):
                 st.session_state.selected_accounts = []
                 st.rerun()
                 
@@ -239,7 +240,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                 pct = (selected_value / total_value * 100) if total_value != 0 else 0
                 st.metric("% of Total", f"{pct:.1f}%")
         else:
-            st.sidebar.error(" No accounts selected")
+            st.sidebar.error(" No Accounts selected")
         
         # Search results info
         if search:
@@ -248,7 +249,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         return st.session_state.selected_accounts
         
     except Exception as e:
-        st.sidebar.error(f" Error rendering account filters: {str(e)}")
+        st.sidebar.error(f" Error rendering Account filters: {str(e)}")
         return []
 
 
@@ -292,9 +293,9 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             with col_start:
                 start_date = st.date_input(
                     "Start date",
-                    value=df['date'].min().date(),
-                    min_value=df['date'].min().date(),
-                    max_value=df['date'].max().date(),
+                    value=df[ColumnNames.DATE].min().date(),
+                    min_value=df[ColumnNames.DATE].min().date(),
+                    max_value=df[ColumnNames.DATE].max().date(),
                     key="expense_date_start",
                     help="Select the start date for filtering"
                 )
@@ -302,9 +303,9 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             with col_end:
                 end_date = st.date_input(
                     "End date",
-                    value=df['date'].max().date(),
-                    min_value=df['date'].min().date(),
-                    max_value=df['date'].max().date(),
+                    value=df[ColumnNames.DATE].max().date(),
+                    min_value=df[ColumnNames.DATE].min().date(),
+                    max_value=df[ColumnNames.DATE].max().date(),
                     key="expense_date_end",
                     help="Select the end date for filtering"
                 )
@@ -329,14 +330,14 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         # Calculate metrics for filtered range
         if len(df_filtered) > 0:
             df_temp = df_filtered.copy()
-            df_temp['year_month'] = df_temp['date'].dt.to_period('M')
+            df_temp['year_month'] = df_temp[ColumnNames.DATE].dt.to_period('M')
             num_months = df_temp['year_month'].nunique()
-            date_range_days = (df_filtered['date'].max() - df_filtered['date'].min()).days + 1
+            date_range_days = (df_filtered[ColumnNames.DATE].max() - df_filtered[ColumnNames.DATE].min()).days + 1
             
             # Display date range info
             st.sidebar.info(
-                f"📊 Showing data from **{df_filtered['date'].min().strftime('%Y-%m-%d')}** "
-                f"to **{df_filtered['date'].max().strftime('%Y-%m-%d')}**\n\n"
+                f"📊 Showing data from **{df_filtered[ColumnNames.DATE].min().strftime('%Y-%m-%d')}** "
+                f"to **{df_filtered[ColumnNames.DATE].max().strftime('%Y-%m-%d')}**\n\n"
                 f"({date_range_days} days, {num_months} months)"
             )
         else:

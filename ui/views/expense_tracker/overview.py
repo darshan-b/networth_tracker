@@ -7,6 +7,36 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from data.calculations import calculate_expense_summary, calculate_category_spending
+from ui.charts import create_donut_chart, create_line_chart
+import streamlit.components.v1 as components
+from constants import ColumnNames
+
+
+# https://discuss.streamlit.io/t/changing-the-text-color-of-only-one-metric/35338/2
+def color_widget_text(widget_text, color='#000000'):
+    """
+    Change the color of widget text in Streamlit using JavaScript injection.
+    
+    Args:
+        widget_text: The text content to match
+        color: Hex color code (default: black)
+    
+    Warning: This function injects user input into JavaScript. Ensure widget_text
+    is from a trusted source to prevent XSS vulnerabilities.
+    """
+    html = f"""
+    <script>
+        var elements = window.parent.document.querySelectorAll('*');
+        for (var i = 0; i < elements.length; i++) {{
+            if (elements[i].innerText === '{widget_text}') {{
+                elements[i].style.color = '{color}';
+            }}
+        }}
+    </script>
+    """
+    
+    # height = 0 or > 1 will keep adding horizontal lines
+    components.html(html, height=1, width=0)
 
 
 def render_overview_tab(df, budgets, num_months=1):
@@ -59,23 +89,27 @@ def _render_summary_metrics(summary):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Spent", f"${summary['total_spent']:,.2f}")
+        st.metric("Total Spent", f"${summary['total_spent']:,.2f}", border=True, height='stretch')
+        color_widget_text(f"${summary['total_spent']:,.2f}") 
     
     with col2:
-        st.metric("Total Budget", f"${summary['total_budget']:,.2f}")
+        st.metric("Total Budget", f"${summary['total_budget']:,.2f}", border=True, height='stretch')
+        color_widget_text(f"${summary['total_budget']:,.2f}") 
     
     with col3:
         remaining = summary['remaining']
         budget = summary['total_budget']
+        color = "red" if remaining < 0 else "green"      
         remaining_pct = (remaining / budget * 100) if budget > 0 else 0
-        st.metric(
-            "Remaining", 
-            f"${remaining:,.2f}", 
-            delta=f"{remaining_pct:.1f}%"
-        )
+        st.metric("Remaining", f"${remaining:,.2f}", delta=f"{remaining_pct:.1f}%", border=True)
+        if remaining < 0:
+            color_widget_text(f"${remaining:,.2f}", '#FF0000') 
+        else:
+            color_widget_text(f"${remaining:,.2f}", '#00B050') 
     
     with col4:
-        st.metric("Transactions", summary['num_transactions'])
+        st.metric("Transactions", summary['num_transactions'], border=True, height='stretch')
+        color_widget_text(str(summary['num_transactions'])) 
 
 
 def _render_category_pie_chart(df):
@@ -94,13 +128,7 @@ def _render_category_pie_chart(df):
             st.info("No category data available.")
             return
         
-        fig = px.pie(
-            category_spending, 
-            values='amount', 
-            names='category',
-            color_discrete_sequence=px.colors.qualitative.Set3
-        )
-        fig.update_traces(textposition='inside', textinfo='percent+label')
+        fig = create_donut_chart(category_spending, '')
         st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
@@ -134,7 +162,7 @@ def _render_spending_trend_chart(df):
 
 def _render_trend_filters(df):
     """
-    Render filter controls for the spending trend chart.
+    Render filter controls for the spending trend chart with cascading filters.
     
     Args:
         df (pd.DataFrame): Transactions dataframe
@@ -144,41 +172,54 @@ def _render_trend_filters(df):
     """
     col_filter1, col_filter2, col_filter3 = st.columns(3)
     
+    # Category filter
     with col_filter1:
-        categories = ['All'] + sorted(df['category'].unique().tolist())
+        categories = ['All'] + sorted(df[ColumnNames.CATEGORY].unique().tolist())
         selected_category = st.selectbox(
-            'category', 
+            'Category', 
             categories, 
             key='trend_cat'
         )
     
+    # Filter dataframe for subcategory options
+    df_for_subcat = df.copy()
+    if selected_category != 'All':
+        df_for_subcat = df_for_subcat[df_for_subcat[ColumnNames.CATEGORY] == selected_category]
+    
+    # Subcategory filter (cascading from category)
     with col_filter2:
-        subcategories = ['All'] + sorted(df['subcategory'].unique().tolist())
+        subcategories = ['All'] + sorted(df_for_subcat[ColumnNames.SUBCATEGORY].unique().tolist())
         selected_subcategory = st.selectbox(
             'Subcategory', 
             subcategories, 
             key='trend_subcat'
         )
     
+    # Filter dataframe for merchant options
+    df_for_merchant = df_for_subcat.copy()
+    if selected_subcategory != 'All':
+        df_for_merchant = df_for_merchant[df_for_merchant[ColumnNames.SUBCATEGORY] == selected_subcategory]
+    
+    # Merchant filter (cascading from category and subcategory)
     with col_filter3:
-        merchants = ['All'] + sorted(df['merchant'].unique().tolist())
+        merchants = ['All'] + sorted(df_for_merchant[ColumnNames.MERCHANT].unique().tolist())
         selected_merchant = st.selectbox(
             'Merchant', 
             merchants, 
             key='trend_merch'
         )
     
-    # Apply filters
+    # Apply filters to get final filtered dataframe
     filtered_df = df.copy()
     
     if selected_category != 'All':
-        filtered_df = filtered_df[filtered_df['category'] == selected_category]
+        filtered_df = filtered_df[filtered_df[ColumnNames.CATEGORY] == selected_category]
     
     if selected_subcategory != 'All':
-        filtered_df = filtered_df[filtered_df['subcategory'] == selected_subcategory]
+        filtered_df = filtered_df[filtered_df[ColumnNames.SUBCATEGORY] == selected_subcategory]
     
     if selected_merchant != 'All':
-        filtered_df = filtered_df[filtered_df['merchant'] == selected_merchant]
+        filtered_df = filtered_df[filtered_df[ColumnNames.MERCHANT] == selected_merchant]
     
     return filtered_df
 
@@ -194,14 +235,14 @@ def _aggregate_daily_spending(df):
         pd.DataFrame: Daily spending with cumulative amounts
     """
     daily_spending = (
-        df.groupby('date', as_index=False)['amount']
+        df.groupby(ColumnNames.DATE, as_index=False)[ColumnNames.AMOUNT]
         .sum()
-        .sort_values('date')
+        .sort_values(ColumnNames.DATE)
     )
     
     # Convert to positive values and calculate cumulative spending
-    daily_spending['amount'] = daily_spending['amount'].abs()
-    daily_spending['cumulative_amount'] = daily_spending['amount'].cumsum()
+    daily_spending[ColumnNames.AMOUNT] = daily_spending[ColumnNames.AMOUNT].abs()
+    daily_spending['cumulative_amount'] = daily_spending[ColumnNames.AMOUNT].cumsum()
     
     return daily_spending
 
@@ -216,27 +257,8 @@ def _create_trend_chart(daily_spending):
     Returns:
         plotly.graph_objects.Figure: Configured line chart
     """
-    fig = px.line(
-        daily_spending, 
-        x='date', 
-        y='cumulative_amount',
-        markers=True
-    )
-    
-    fig.update_traces(
-        line_color='#1f77b4',
-        line_width=3,
-        marker=dict(size=8),
-        mode='lines'
-    )
-    
-    fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Cumulative Spending ($)",
-        hovermode='x unified',
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis=dict(gridcolor='lightgray'),
-        xaxis=dict(showgrid=False)
-    )
-    
-    return fig
+    return create_line_chart(daily_spending, 
+                            x=ColumnNames.DATE, 
+                            y='cumulative_amount', 
+                            x_title='Date', 
+                            y_title="Cumulative Spending ($)")

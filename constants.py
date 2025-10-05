@@ -28,7 +28,7 @@ class ColumnNames:
 
 class ComparisonTypes:
     """Comparison period types."""
-    MONTH = 'month'
+    MONTH = 'Month'
     QUARTER = 'Quarter'
     YEAR = 'Year'
 
