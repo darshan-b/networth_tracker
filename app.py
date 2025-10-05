@@ -17,11 +17,11 @@ from ui.components.filters import (
     render_networth_sidebar_filters,
     render_expense_date_filter
 )
-from ui.dashboard import render_dashboard
-from growth_over_time_view import show_growth_over_time
-from pivot_table_view import show_pivot_table
-from growth_projections_view import show_growth_projections
-from expense_tracker_view import show_expense_tracker
+from ui.views.dashboard import render_dashboard
+from ui.views.growth_over_time_view import show_growth_over_time
+from ui.views.pivot_table_view import show_pivot_table
+from ui.views.growth_projections_view import show_growth_projections
+from ui.views.expense_tracker_view import show_expense_tracker
 
 # Constants
 APP_TITLE = "Personal Finance Tracker"
