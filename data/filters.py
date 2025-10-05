@@ -99,11 +99,11 @@ def get_date_range_options() -> List[str]:
         List of date range option strings
     """
     return [
+        DATE_RANGE_THIS_MONTH,
+        DATE_RANGE_LAST_MONTH,
         DATE_RANGE_LAST_7,
         DATE_RANGE_LAST_14,
         DATE_RANGE_LAST_30,
-        DATE_RANGE_THIS_MONTH,
-        DATE_RANGE_LAST_MONTH,
         DATE_RANGE_THIS_YEAR,
         DATE_RANGE_LAST_YEAR,
         DATE_RANGE_CUSTOM
@@ -136,16 +136,7 @@ def calculate_date_range(date_option: str) -> Optional[Tuple[datetime, datetime]
         
         today = datetime.now()
         
-        if date_option == DATE_RANGE_LAST_7:
-            return (today - pd.Timedelta(days=7), today)
-            
-        elif date_option == DATE_RANGE_LAST_14:
-            return (today - pd.Timedelta(days=14), today)
-            
-        elif date_option == DATE_RANGE_LAST_30:
-            return (today - pd.Timedelta(days=30), today)
-            
-        elif date_option == DATE_RANGE_THIS_MONTH:
+        if date_option == DATE_RANGE_THIS_MONTH:
             start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             return (start, today)
             
@@ -154,6 +145,15 @@ def calculate_date_range(date_option: str) -> Optional[Tuple[datetime, datetime]
             last_month_end = first_of_this_month - pd.Timedelta(days=1)
             last_month_start = last_month_end.replace(day=1)
             return (last_month_start, last_month_end)
+        
+        elif date_option == DATE_RANGE_LAST_7:
+            return (today - pd.Timedelta(days=7), today)
+            
+        elif date_option == DATE_RANGE_LAST_14:
+            return (today - pd.Timedelta(days=14), today)
+            
+        elif date_option == DATE_RANGE_LAST_30:
+            return (today - pd.Timedelta(days=30), today)
             
         elif date_option == DATE_RANGE_THIS_YEAR:
             start = today.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
