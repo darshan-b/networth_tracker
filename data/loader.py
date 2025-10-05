@@ -108,6 +108,7 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
     return _get_default_budgets()
 
 
+# if you don't want to provide a file for budget set it here with whatever categories you have
 def _get_default_budgets() -> Dict[str, float]:
     """Return default budget values.
     
@@ -117,8 +118,8 @@ def _get_default_budgets() -> Dict[str, float]:
     return {
         'Housing': 1200.00,
         'Utilities': 150.00,
-        'Food & Dining': 400.00,
+        'Food & Dining': 350.00,
         'Entertainment': 100.00,
         'Transportation': 200.00,
-        'Miscellaneous': 300.00,
+        'Miscellaneous': 200.00,
     }

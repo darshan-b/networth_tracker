@@ -19,14 +19,13 @@ def main():
     # Page configuration
     st.set_page_config(page_title="Personal Finance Tracker", layout="wide")
     
-    # Load data
-    data = load_networth_data()
+
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.radio(
         "Select View",
-        ["📊 Net Worth Tracker", "💳 Expense Tracker"]
+        ["Net Worth Tracker", "Expense Tracker"]
     )
     
     st.sidebar.markdown("---")
@@ -35,6 +34,9 @@ def main():
     st.header("Personal Finance Tracker")
     
     if app_mode == "📊 Net Worth Tracker":
+        # Load data
+        data = load_networth_data()
+
         # Render header filters
         selected_account_types, selected_categories = render_header_filters(data)
         
