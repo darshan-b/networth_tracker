@@ -53,14 +53,14 @@ def _apply_transaction_filters(df):
     
     with col1:
         account_filter = st.multiselect(
-            "Filter by Account", 
+            "Filter by account", 
             options=sorted(df['account'].unique()),
             default=list(df['account'].unique())
         )
     
     with col2:
         category_filter = st.multiselect(
-            "Filter by Category",
+            "Filter by category",
             options=sorted(df['category'].unique()),
             default=list(df['category'].unique())
         )
@@ -107,7 +107,7 @@ def _render_transaction_table(df_filtered):
         hide_index=True,
         column_config={
             "display_amount": st.column_config.NumberColumn(
-                "Amount", 
+                "amount", 
                 format="$%.2f"
             ),
             "date": st.column_config.DateColumn("Date"),

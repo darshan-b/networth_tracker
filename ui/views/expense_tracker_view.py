@@ -9,7 +9,10 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Optional
 
+from constants import ColumnNames
 from data.filters import filter_expenses
+from data.validators import validate_dataframe, validate_budget_config, validate_positive_integer
+from ui.components.utils import render_tabs_safely, render_empty_state, safe_render_tab
 from ui.views.expense_tracker.overview import render_overview_tab
 from ui.views.expense_tracker.transactions import render_transactions_tab
 from ui.views.expense_tracker.budget import render_budgets_tab
@@ -17,15 +20,21 @@ from ui.views.expense_tracker.insights import render_insights_tab
 from ui.views.expense_tracker.sankey import render_sankey_tab
 
 
-# Tab name constants
-TAB_OVERVIEW = "Overview"
-TAB_TRANSACTIONS = "Transactions"
-TAB_BUDGETS = "Budgets"
-TAB_INSIGHTS = "Insights"
-TAB_SANKEY = "Cash Flow"
+# Tab configuration
+TAB_CONFIG = [
+    {'name': 'Overview', 'render_func': None, 'context': 'overview'},
+    {'name': 'Transactions', 'render_func': render_transactions_tab, 'context': 'transactions'},
+    {'name': 'Budgets', 'render_func': None, 'context': 'budgets'},
+    {'name': 'Insights', 'render_func': render_insights_tab, 'context': 'insights'},
+    {'name': 'Cash Flow', 'render_func': render_sankey_tab, 'context': 'cash flow'}
+]
 
 
-def show_expense_tracker(df_filtered: Optional[pd.DataFrame], budgets: Dict[str, float], num_months: int = 1) -> None:
+def show_expense_tracker(
+    df_filtered: Optional[pd.DataFrame],
+    budgets: Dict[str, float],
+    num_months: int = 1
+) -> None:
     """
     Display the expense tracker interface with multiple tabs.
     
@@ -42,79 +51,86 @@ def show_expense_tracker(df_filtered: Optional[pd.DataFrame], budgets: Dict[str,
         
     Returns:
         None
-        
-    Raises:
-        Does not raise exceptions directly, but displays error messages to the UI
-        when invalid inputs are detected or rendering errors occur.
     """
     # Validate inputs
-    if df_filtered is None or df_filtered.empty:
-        st.warning("No transaction data available for the selected period.")
+    required_columns = [
+        ColumnNames.DATE,
+        ColumnNames.AMOUNT,
+        ColumnNames.CATEGORY,
+        ColumnNames.MERCHANT,
+        ColumnNames.ACCOUNT
+    ]
+    
+    if not validate_dataframe(df_filtered, required_columns, context="transaction data"):
+        render_empty_state(
+            title="No Transaction Data",
+            message="No transaction data available for the selected period.",
+            show_tips=True,
+            tips=[
+                "Check your date range filter",
+                "Ensure transaction data has been loaded",
+                "Verify your data file contains the required columns"
+            ]
+        )
         return
     
-    if not isinstance(budgets, dict):
+    if not validate_budget_config(budgets):
         st.error("Invalid budget configuration. Please check your budget data.")
         return
     
-    if num_months < 1:
-        st.error(f"Invalid number of months: {num_months}. Must be at least 1.")
+    if not validate_positive_integer(num_months, "number of months"):
         return
     
     st.divider()
     
-    # Create navigation tabs
-    tabs = st.tabs([
-        TAB_OVERVIEW,
-        TAB_TRANSACTIONS,
-        TAB_BUDGETS,
-        TAB_INSIGHTS,
-        TAB_SANKEY
-    ])
+    # Create tab names from config
+    tab_names = [config['name'] for config in TAB_CONFIG]
+    tabs = st.tabs(tab_names)
     
     # Filter for expenses (for tabs that only need expense data)
     df_expenses = filter_expenses(df_filtered)
     
-    # Render Overview tab
+    # Render each tab with error handling
+    # Overview tab
     with tabs[0]:
-        try:
-            render_overview_tab(df_expenses, budgets, num_months)
-        except Exception as e:
-            st.error(f"Failed to display overview: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_overview_tab,
+            df_expenses,
+            budgets,
+            num_months,
+            error_context="overview"
+        )
     
-    # Render Transactions tab
+    # Transactions tab
     with tabs[1]:
-        try:
-            render_transactions_tab(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display transactions: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_transactions_tab,
+            df_filtered,
+            error_context="transactions"
+        )
     
-    # Render Budgets tab
+    # Budgets tab
     with tabs[2]:
-        try:
-            render_budgets_tab(df_expenses, budgets, num_months)
-        except Exception as e:
-            st.error(f"Failed to display budgets: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_budgets_tab,
+            df_expenses,
+            budgets,
+            num_months,
+            error_context="budgets"
+        )
     
-    # Render Insights tab
+    # Insights tab
     with tabs[3]:
-        try:
-            render_insights_tab(df_expenses)
-        except Exception as e:
-            st.error(f"Failed to display insights: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_insights_tab,
+            df_expenses,
+            error_context="insights"
+        )
     
-    # Render Sankey (Cash Flow) tab
+    # Sankey (Cash Flow) tab
     with tabs[4]:
-        try:
-            render_sankey_tab(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display cash flow diagram: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_sankey_tab,
+            df_filtered,
+            error_context="cash flow diagram"
+        )

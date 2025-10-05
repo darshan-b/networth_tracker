@@ -50,7 +50,7 @@ def render_insights_tab(df):
     
     st.divider()
     
-    # Category trends over time
+    # category trends over time
     _render_category_trends(df)
 
 
@@ -80,7 +80,7 @@ def _render_top_merchants(df):
         )
         fig.update_layout(
             showlegend=False, 
-            xaxis_title="Amount ($)", 
+            xaxis_title="amount ($)", 
             yaxis_title=""
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -115,7 +115,7 @@ def _render_dow_spending(df):
         fig.update_layout(
             showlegend=False, 
             xaxis_title="", 
-            yaxis_title="Amount ($)"
+            yaxis_title="amount ($)"
         )
         st.plotly_chart(fig, use_container_width=True)
         
@@ -130,7 +130,7 @@ def _render_avg_transaction_by_category(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Average Transaction by Category")
+    st.markdown("#### Average Transaction by category")
     
     try:
         avg_by_category = (
@@ -194,7 +194,7 @@ def _render_summary_statistics(df):
                 st.metric("Most Frequent Merchant", most_frequent_merchant)
                 
                 most_frequent_category = df['category'].mode()[0]
-                st.metric("Most Frequent Category", most_frequent_category)
+                st.metric("Most Frequent category", most_frequent_category)
             except Exception:
                 st.info("Insufficient data for frequency analysis.")
 
@@ -206,7 +206,7 @@ def _render_category_trends(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Category Spending Over Time")
+    st.markdown("#### category Spending Over Time")
     
     try:
         category_monthly = calculate_category_trends(df)
@@ -223,8 +223,8 @@ def _render_category_trends(df):
             markers=True
         )
         fig.update_layout(
-            xaxis_title="Month", 
-            yaxis_title="Amount ($)",
+            xaxis_title="month", 
+            yaxis_title="amount ($)",
             xaxis=dict(tickformat="%b %Y")
         )
         st.plotly_chart(fig, use_container_width=True)

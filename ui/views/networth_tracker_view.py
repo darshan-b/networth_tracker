@@ -9,18 +9,23 @@ import pandas as pd
 from typing import Optional
 from pygwalker.api.streamlit import StreamlitRenderer
 
+from constants import ColumnNames
+from data.validators import validate_dataframe
+from ui.components.utils import safe_render_tab, render_empty_state
 from ui.views.networth_tracker.growth_over_time import show_growth_over_time
 from ui.views.networth_tracker.pivot_table import show_pivot_table
 from ui.views.networth_tracker.dashboard import render_dashboard
 from ui.views.networth_tracker.growth_projections import show_growth_projections
 
 
-# Tab name constants
-TAB_GROWTH = "Net Worth Over Time"
-TAB_TABLE = "Summarized Table"
-TAB_DASHBOARD = "Dashboard"
-TAB_PROJECTIONS = "Growth Projections"
-TAB_EXPLORER = "Data Explorer"
+# Tab configuration
+TAB_NAMES = [
+    "Net Worth Over Time",
+    "Summarized Table",
+    "Dashboard",
+    "Growth Projections",
+    "Data Explorer"
+]
 
 
 @st.cache_resource
@@ -47,7 +52,10 @@ def get_pyg_renderer(data: pd.DataFrame) -> Optional[StreamlitRenderer]:
         return None
 
 
-def show_networth_tracker(df_filtered: Optional[pd.DataFrame], data: Optional[pd.DataFrame]) -> None:
+def show_networth_tracker(
+    df_filtered: Optional[pd.DataFrame],
+    data: Optional[pd.DataFrame]
+) -> None:
     """
     Display the networth tracker interface with multiple tabs.
     
@@ -62,77 +70,91 @@ def show_networth_tracker(df_filtered: Optional[pd.DataFrame], data: Optional[pd
         
     Returns:
         None
-        
-    Raises:
-        Does not raise exceptions directly, but displays error messages to the UI
-        when invalid inputs are detected or rendering errors occur.
     """
-    # Validate inputs
-    if df_filtered is None or df_filtered.empty:
-        st.warning("No networth data available for the selected period.")
+    # Validate main dataset
+    required_columns = [
+        ColumnNames.MONTH,
+        ColumnNames.MONTH_STR,
+        ColumnNames.AMOUNT,
+        ColumnNames.ACCOUNT_TYPE
+    ]
+    
+    if not validate_dataframe(df_filtered, required_columns, context="networth data"):
+        render_empty_state(
+            title="No Networth Data",
+            message="No networth data available for the selected period.",
+            show_tips=True,
+            tips=[
+                "Check your date range filter",
+                "Ensure networth data has been loaded",
+                "Verify your data file contains the required columns"
+            ]
+        )
         return
     
-    if data is None or data.empty:
-        st.warning("No data available for the data explorer.")
-        # Continue with other tabs even if data explorer won't work
+    # Check explorer data (non-blocking)
+    explorer_available = validate_dataframe(data, min_rows=1, context="")
     
     # Create navigation tabs
-    tabs = st.tabs([
-        TAB_GROWTH,
-        TAB_TABLE,
-        TAB_DASHBOARD,
-        TAB_PROJECTIONS,
-        TAB_EXPLORER
-    ])
+    tabs = st.tabs(TAB_NAMES)
     
     # Render Net Worth Over Time tab
     with tabs[0]:
-        try:
-            show_growth_over_time(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display growth chart: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            show_growth_over_time,
+            df_filtered,
+            error_context="growth chart"
+        )
     
     # Render Summarized Table tab
     with tabs[1]:
-        try:
-            show_pivot_table(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display pivot table: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            show_pivot_table,
+            df_filtered,
+            error_context="pivot table"
+        )
     
     # Render Dashboard tab
     with tabs[2]:
-        try:
-            render_dashboard(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display dashboard: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            render_dashboard,
+            df_filtered,
+            error_context="dashboard"
+        )
     
     # Render Growth Projections tab
     with tabs[3]:
-        try:
-            show_growth_projections(df_filtered)
-        except Exception as e:
-            st.error(f"Failed to display projections: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            show_growth_projections,
+            df_filtered,
+            error_context="projections"
+        )
     
     # Render Data Explorer tab
     with tabs[4]:
-        try:
-            if data is None or data.empty:
-                st.warning("Data explorer is not available - no data provided.")
-            else:
-                renderer = get_pyg_renderer(data)
-                if renderer:
-                    renderer.explorer()
-                else:
-                    st.warning("Data explorer could not be initialized.")
-        except Exception as e:
-            st.error(f"Failed to display data explorer: {str(e)}")
-            with st.expander("Error Details"):
-                st.exception(e)
+        safe_render_tab(
+            _render_data_explorer,
+            data if explorer_available else None,
+            error_context="data explorer"
+        )
+
+
+def _render_data_explorer(data: Optional[pd.DataFrame]) -> None:
+    """
+    Render the data explorer tab with PyGWalker.
+    
+    Args:
+        data: DataFrame to explore, or None if unavailable
+    """
+    if data is None or data.empty:
+        st.warning("Data explorer is not available - no data provided.")
+        st.info("The data explorer requires the complete unfiltered dataset.")
+        return
+    
+    renderer = get_pyg_renderer(data)
+    
+    if renderer:
+        renderer.explorer()
+    else:
+        st.warning("Data explorer could not be initialized.")
+        st.info("Try refreshing the page or check your data format.")

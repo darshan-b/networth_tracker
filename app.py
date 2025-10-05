@@ -44,7 +44,7 @@ def render_networth_tracker() -> None:
         selected_account_types, selected_categories = render_networth_header_filters(data)
         
         if not selected_account_types or not selected_categories:
-            st.info("Please select at least one account type and category to view data.")
+            st.info("Please select at least one account_type and category to view data.")
             return
         
         # Get filtered account list

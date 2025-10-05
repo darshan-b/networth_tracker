@@ -21,7 +21,7 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         filename: Name of CSV file to load from raw data directory
         
     Returns:
-        Preprocessed DataFrame with datetime Month column and formatted strings
+        Preprocessed DataFrame with datetime month column and formatted strings
     """
     filepath = RAW_DATA_DIR / filename
     
@@ -29,10 +29,10 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         data = pd.read_csv(filepath)
         
         # Process date and amount columns
-        data['Month'] = pd.to_datetime(data['Month'])
-        data['Amount'] = data['Amount'].round().astype(int)
-        data['Month_Str'] = data['Month'].dt.strftime('%b-%Y')
-        data = data.sort_values('Month')
+        data['month'] = pd.to_datetime(data['month'])
+        data['amount'] = data['amount'].round().astype(int)
+        data['month_Str'] = data['month'].dt.strftime('%b-%Y')
+        data = data.sort_values('month')
         
         return data
         

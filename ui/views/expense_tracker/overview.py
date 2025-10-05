@@ -85,7 +85,7 @@ def _render_category_pie_chart(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Spending by Category")
+    st.markdown("#### Spending by category")
     
     try:
         category_spending = calculate_category_spending(df)
@@ -147,7 +147,7 @@ def _render_trend_filters(df):
     with col_filter1:
         categories = ['All'] + sorted(df['category'].unique().tolist())
         selected_category = st.selectbox(
-            'Category', 
+            'category', 
             categories, 
             key='trend_cat'
         )

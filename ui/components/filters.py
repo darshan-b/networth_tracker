@@ -23,7 +23,7 @@ SEARCH_PLACEHOLDER = "Type to filter..."
 
 
 def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[str]]:
-    """Render account type and category segmented controls for Net Worth Tracker.
+    """Render account_type and category segmented controls for Net Worth Tracker.
     
     Args:
         data: Full dataset
@@ -35,40 +35,40 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
         ValueError: If data is invalid
     """
     try:        
-        required_columns = ['Account Type', 'Category']
+        required_columns = ['account_type', 'category']
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
             st.error(f" Data is missing required columns: {', '.join(missing_columns)}")
             return [], []
         
-        # Render account type filter
-        acct_types = sorted(data['Account Type'].unique())
+        # Render account_type filter
+        acct_types = sorted(data['account_type'].unique())
         
         if not acct_types:
-            st.warning(" No account types found in data.")
+            st.warning(" No account_types found in data.")
             return [], []
         
         selected_account_types = st.segmented_control(
-            "Account Type", 
+            "account_type", 
             options=acct_types, 
             selection_mode="multi", 
             default=acct_types,
-            help="Filter by account type (e.g., Checking, Savings, Investment)"
+            help="Filter by account_type (e.g., Checking, Savings, Investment)"
         )
         
-        # Render category filter based on selected account types
+        # Render category filter based on selected account_types
         if selected_account_types:
-            categories = sorted(data[data['Account Type'].isin(selected_account_types)]['Category'].unique())
+            categories = sorted(data[data['account_type'].isin(selected_account_types)]['category'].unique())
         else:
-            categories = sorted(data['Category'].unique())
+            categories = sorted(data['category'].unique())
         
         if not categories:
-            st.warning(" No categories available for the selected account types.")
+            st.warning(" No categories available for the selected account_types.")
             return selected_account_types or [], []
         
         selected_categories = st.segmented_control(
-            "Category", 
+            "category", 
             options=categories, 
             selection_mode="multi", 
             default=categories,
@@ -97,7 +97,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         ValueError: If inputs are invalid
     """
     try:
-        st.sidebar.markdown("### Account Filter")
+        st.sidebar.markdown("### account Filter")
         
         # Validate inputs
         if data is None or data.empty:
@@ -143,7 +143,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
             st.sidebar.warning(" No accounts to display.")
             return []
         
-        # Initialize expander states for new account types
+        # Initialize expander states for new account_types
         for acct_type in grouped_accounts.keys():
             if acct_type not in st.session_state.expander_states:
                 st.session_state.expander_states[acct_type] = DEFAULT_EXPANDER_STATE

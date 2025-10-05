@@ -1,23 +1,174 @@
-"""Configuration and constants for Net Worth Tracker."""
+"""Application-wide configuration settings."""
 
+import plotly.express as px
+
+
+class ChartConfig:
+    """Chart styling and layout configuration."""
+    
+    # Default dimensions
+    HEIGHT = 400
+    WIDTH = None  # None = responsive width
+    
+    # Plotly template
+    TEMPLATE = 'plotly_white'
+    
+    # Font settings
+    FONT = {
+        'family': 'Arial, sans-serif',
+        'size': 12,
+        'color': '#2c3e50'
+    }
+    
+    # Margins
+    MARGIN = {
+        'l': 50,
+        'r': 50,
+        't': 50,
+        'b': 50
+    }
+    
+    # Chart-specific settings
+    BAR_LINE_WIDTH = 1
+    BAR_LINE_COLOR = 'rgba(0,0,0,0.1)'
+    DONUT_HOLE_SIZE = 0.4
+    LINE_WIDTH = 3
+    MARKER_SIZE = 8
+    
+    # Hover settings
+    HOVER_MODE = 'x unified'
+
+
+class ColorSchemes:
+    """Color palettes for different chart types."""
+    
+    # Asset colors (greens)
+    ASSETS = [
+        '#4CAF50',  # Green
+        '#8BC34A',  # Light Green
+        '#CDDC39',  # Lime
+        '#66BB6A',  # Medium Green
+        '#AED581'   # Pale Green
+    ]
+    
+    # Liability colors (reds)
+    LIABILITIES = [
+        '#F44336',  # Red
+        '#E91E63',  # Pink
+        '#9C27B0',  # Purple
+        '#EF5350',  # Light Red
+        '#EC407A'   # Medium Pink
+    ]
+    
+    # Neutral colors (grays/blues)
+    NEUTRAL = [
+        '#607D8B',  # Blue Gray
+        '#90A4AE',  # Light Blue Gray
+        '#78909C',  # Medium Blue Gray
+        '#B0BEC5',  # Pale Blue Gray
+        '#CFD8DC'   # Very Light Blue Gray
+    ]
+    
+    # Categorical colors (for categories)
+    CATEGORICAL = px.colors.qualitative.Set3
+    
+    # Status colors
+    SUCCESS = '#4CAF50'
+    WARNING = '#FF9800'
+    DANGER = '#F44336'
+    PRIMARY = '#2196F3'
+    INFO = '#00BCD4'
+    
+    # Gradient colors for continuous scales
+    GRADIENT_GREEN = 'Greens'
+    GRADIENT_RED = 'Reds'
+    GRADIENT_BLUE = 'Blues'
+    GRADIENT_PURPLE = 'Purples'
+
+
+class UIConfig:
+    """UI component configuration."""
+    
+    # Default column counts
+    METRIC_COLUMNS = 3
+    FILTER_COLUMNS = 3
+    CHART_COLUMNS = 2
+    
+    # Date format
+    DATE_FORMAT = '%b %Y'
+    DATE_FORMAT_FULL = '%B %d, %Y'
+    
+    # Number formatting
+    CURRENCY_FORMAT = '${:,.0f}'
+    CURRENCY_FORMAT_DETAILED = '${:,.2f}'
+    PERCENT_FORMAT = '{:.1f}%'
+    PERCENT_FORMAT_DETAILED = '{:.2f}%'
+    
+    # Table settings
+    TABLE_PAGE_SIZE = 50
+    TABLE_HEIGHT = 400
+    
+    # Chart settings
+    CHART_USE_CONTAINER_WIDTH = True
+    
+    # Progress bar thresholds
+    BUDGET_WARNING_THRESHOLD = 80  # Percent
+    BUDGET_DANGER_THRESHOLD = 100  # Percent
+
+
+class AnalysisConfig:
+    """Configuration for analysis and calculations."""
+    
+    # Default analysis periods
+    DEFAULT_MONTHS = 12
+    DEFAULT_QUARTERS = 4
+    DEFAULT_YEARS = 3
+    
+    # Top N settings
+    TOP_MERCHANTS_LIMIT = 10
+    TOP_CATEGORIES_LIMIT = 5
+    TOP_ACCOUNTS_LIMIT = 5
+    
+    # Projection settings
+    DEFAULT_ANNUAL_RETURN = 7.0  # Percent
+    DEFAULT_MONTHLY_CONTRIBUTION = 1000
+    MAX_PROJECTION_MONTHS = 600  # 50 years
+    
+    # Growth calculation
+    ROLLING_WINDOW_SIZE = 3  # For moving averages
+    MILESTONE_VALUES = [100000, 250000, 500000, 750000, 1000000, 1500000, 2000000]
+
+
+class DataConfig:
+    """Data processing configuration."""
+    
+    # Required columns for different views
+    EXPENSE_REQUIRED_COLUMNS = ['date', 'amount', 'category', 'merchant', 'account']
+    NETWORTH_REQUIRED_COLUMNS = ['month', 'amount', 'account_type', 'category']
+    
+    # Column type mappings
+    NUMERIC_COLUMNS = ['amount', 'amount']
+    DATE_COLUMNS = ['date', 'month']
+    
+    # Data validation
+    MIN_ROWS_FOR_ANALYSIS = 2
+    MIN_PERIODS_FOR_TRENDS = 3
+
+
+# Legacy support - map old config to new structure
 COLORS = {
-    'primary': '#1f77b4',
-    'success': '#2ca02c',
-    'warning': '#ff7f0e',
-    'danger': '#d62728',
-    'info': '#17becf',
-    'purple': '#9467bd',
-    'assets': ['#d4edda', '#c3e6cb', '#b1dfbb', '#a0d8ab', '#8fd19e', '#7eca91'],
-    'liabilities': ['#f8d7da', '#f5c6cb', '#f1b0b7', '#ee9ca4', '#eb8891', '#e8737e'],
-    'neutral': ['#e8f4f8', '#d1e7f0', '#b8dae8', '#a0cde0', '#87c0d8', '#6fb3d0']
+    'assets': ColorSchemes.ASSETS,
+    'liabilities': ColorSchemes.LIABILITIES,
+    'neutral': ColorSchemes.NEUTRAL,
+    'success': ColorSchemes.SUCCESS,
+    'warning': ColorSchemes.WARNING,
+    'danger': ColorSchemes.DANGER,
+    'primary': ColorSchemes.PRIMARY
 }
 
 CHART_CONFIG = {
-    'height': 320,
-    'margin': dict(l=20, r=20, t=30, b=20),
-    'template': 'plotly_white',
-    'font': dict(size=12, family='Arial, sans-serif')
+    'height': ChartConfig.HEIGHT,
+    'template': ChartConfig.TEMPLATE,
+    'font': ChartConfig.FONT,
+    'margin': ChartConfig.MARGIN
 }
-
-HOVER_TEMPLATE = '<b>%{label}</b><br>$%{value:,.0f}<br>%{percent}<extra></extra>'
-BAR_HOVER_TEMPLATE = '<b>%{y}</b><br>Amount: $%{x:,.0f}<br>%{customdata}<extra></extra>'

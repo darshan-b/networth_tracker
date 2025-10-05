@@ -21,9 +21,9 @@ DATE_RANGE_LAST_YEAR = "Last year"
 DATE_RANGE_CUSTOM = "Custom range"
 
 # Column name constants
-COL_ACCOUNT_TYPE = 'Account Type'
-COL_CATEGORY = 'Category'
-COL_ACCOUNT = 'Account'
+COL_ACCOUNT_TYPE = 'account_type'
+COL_CATEGORY = 'category'
+COL_ACCOUNT = 'account'
 COL_DATE = 'date'
 COL_CATEGORY_EXPENSE = 'category'
 
@@ -33,7 +33,7 @@ def filter_data(data: pd.DataFrame, account_types: List[str], categories: List[s
     
     Args:
         data: Full dataset
-        account_types: List of account types to include
+        account_types: List of account_types to include
         categories: List of categories to include
         accounts: List of specific accounts to include
         
@@ -64,7 +64,7 @@ def get_filtered_accounts(data: pd.DataFrame, account_types: List[str], categori
     
     Args:
         data: Full dataset
-        account_types: List of account types to include
+        account_types: List of account_types to include
         categories: List of categories to include
         
     Returns:

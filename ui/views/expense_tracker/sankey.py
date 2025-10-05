@@ -125,7 +125,7 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     Args:
         df (pd.DataFrame): Transactions dataframe
-        category (str): Category name
+        category (str): category name
         category_total (float): Total amount for the category
         node_map (dict): Mapping of node names to indices
         nodes (list): List of node dictionaries
@@ -318,7 +318,7 @@ def _render_sankey_summary(df):
             if not category_totals.empty:
                 largest_category = category_totals.index[0]
                 largest_amount = category_totals.iloc[0]
-                st.metric("Largest Category", largest_category)
+                st.metric("Largest category", largest_category)
                 st.caption(f"${largest_amount:,.2f}")
     
     with col4:

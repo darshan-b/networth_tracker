@@ -81,14 +81,14 @@ def _render_budget_comparison_chart(budget_df):
         
         fig.add_trace(go.Bar(
             name='Budget', 
-            x=budget_df['Category'], 
+            x=budget_df['category'], 
             y=budget_df['Budget'], 
             marker_color='lightblue'
         ))
         
         fig.add_trace(go.Bar(
             name='Spent', 
-            x=budget_df['Category'], 
+            x=budget_df['category'], 
             y=budget_df['Spent'],
             marker_color='coral'
         ))
@@ -96,7 +96,7 @@ def _render_budget_comparison_chart(budget_df):
         fig.update_layout(
             barmode='group', 
             xaxis_title="", 
-            yaxis_title="Amount ($)"
+            yaxis_title="amount ($)"
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -114,7 +114,7 @@ def _render_budget_details(budgets, budget_df, num_months):
         budget_df (pd.DataFrame): Budget comparison dataframe
         num_months (int): Number of months in the selected period
     """
-    st.markdown("#### Monthly Budgets")
+    st.markdown("#### monthly Budgets")
     
     col1, col2 = st.columns(2)
     
@@ -129,12 +129,12 @@ def _render_budget_card(category, monthly_budget, budget_df, num_months):
     
     Args:
         category (str): Budget category name
-        monthly_budget (float): Monthly budget amount
+        monthly_budget (float): monthly budget amount
         budget_df (pd.DataFrame): Budget comparison dataframe
         num_months (int): Number of months in the selected period
     """
     # Get budget data for this category
-    category_data = budget_df[budget_df['Category'] == category]
+    category_data = budget_df[budget_df['category'] == category]
     
     if not category_data.empty:
         row = category_data.iloc[0]
@@ -155,7 +155,7 @@ def _render_budget_card(category, monthly_budget, budget_df, num_months):
             f"${scaled_budget:,.2f}",
             delta=f"${spent:,.2f} spent"
         )
-        st.caption(f"Monthly budget: ${monthly_budget:,.2f}")
+        st.caption(f"monthly budget: ${monthly_budget:,.2f}")
     else:
         st.metric(
             "Budget", 
@@ -174,7 +174,7 @@ def _render_budget_progress(spent, budget, percentage):
     Render progress bar and status message for budget tracking.
     
     Args:
-        spent (float): Amount spent
+        spent (float): amount spent
         budget (float): Budget amount
         percentage (float): Percentage of budget spent
     """

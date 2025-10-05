@@ -1,6 +1,6 @@
 # Financial Dashboard
 
-This Streamlit application provides a comprehensive view of your financial accounts, with multiple visualization modes and key metrics. It is designed to help you track month-over-month progress, view summaries by account type and category, and quickly assess your financial position.
+This Streamlit application provides a comprehensive view of your financial accounts, with multiple visualization modes and key metrics. It is designed to help you track month-over-month progress, view summaries by account_type and category, and quickly assess your financial position.
 
 ---
 
@@ -9,11 +9,11 @@ This Streamlit application provides a comprehensive view of your financial accou
 ### Tab 1: Chart View
 - Displays interactive **bar and line charts** of selected accounts and categories.
 - Allows filtering by:
-  - **Account Type** (multi-select)
-  - **Category** (multi-select)
-  - **Account** (multi-select)
+  - **account_type** (multi-select)
+  - **category** (multi-select)
+  - **account** (multi-select)
 - Features:
-  - **Monthly total line chart** showing month-over-month progress.
+  - **monthly total line chart** showing month-over-month progress.
   - Color-coded bars for account balances.
   - Hover information shows exact values.
 - **Use case:** Quickly visualize trends and account balances over time.
@@ -33,7 +33,7 @@ This Streamlit application provides a comprehensive view of your financial accou
 
 ---
 
-### Tab 3: Month-over-Month Progress
+### Tab 3: month-over-month Progress
 - Displays **line chart(s)** showing financial progress over months.
 - Features:
   - Shows **monthly totals** or account/category-specific lines.
@@ -47,9 +47,9 @@ This Streamlit application provides a comprehensive view of your financial accou
 ### Tab 4: Dashboard Overview
 - Combines multiple visualizations in a **2x2 grid** for a high-level summary.
 - Subplots include:
-  1. **Monthly Total Line Chart**
-  2. **Account Type Distribution (Bar Chart)**
-  3. **Category Distribution (Pie Chart)**
+  1. **monthly Total Line Chart**
+  2. **account_type Distribution (Bar Chart)**
+  3. **category Distribution (Pie Chart)**
   4. **Treemap** showing account and category balances for the latest month
      - Automatically adjusts **Liabilities** as negative values.
      - Displays hover info with labels, values, and percentages.
@@ -62,7 +62,7 @@ This Streamlit application provides a comprehensive view of your financial accou
 
 ## Key Features
 - Fully interactive charts using **Plotly**.
-- **Dynamic filtering** by account type, category, and individual account.
+- **Dynamic filtering** by account_type, category, and individual account.
 - Download pivot tables in **Excel** format.
 - Color-coded insights for quick assessment:
   - Green = positive growth

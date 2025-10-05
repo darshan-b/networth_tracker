@@ -17,7 +17,7 @@ def calculate_months_to_goal(current_value, goal_amount, monthly_contribution, a
     Args:
         current_value: Starting net worth
         goal_amount: Target net worth
-        monthly_contribution: Monthly additional contribution
+        monthly_contribution: monthly additional contribution
         annual_return_rate: Annual return rate as percentage (e.g., 7 for 7%)
         compound_freq: 'monthly' or 'annually'
         
@@ -118,7 +118,7 @@ def generate_projection_data(current_value, goal_amount, monthly_contribution, a
         total_contributions += monthly_contribution
     
     return pd.DataFrame({
-        'Month': months,
+        'month': months,
         'Date': dates,
         'Balance': balances,
         'Contributions': contributions_cumulative,
@@ -175,8 +175,8 @@ def create_breakdown_chart(projection_df, current_value):
     
     fig.update_layout(
         title="Balance Breakdown Over Time",
-        xaxis_title="Months from Now",
-        yaxis_title="Amount ($)",
+        xaxis_title="months from Now",
+        yaxis_title="amount ($)",
         template='plotly_white',
         height=400,
         hovermode='x unified',
@@ -204,17 +204,17 @@ def show_growth_projections(filtered_df):
     st.header("Growth Projections & Goal Planning")
     
     # Calculate current net worth
-    totals_df = filtered_df.groupby(['Month', 'Month_Str'], as_index=False)['Amount'].sum()
+    totals_df = filtered_df.groupby(['month', 'month_Str'], as_index=False)['amount'].sum()
     
     if totals_df.empty:
         st.warning("No data available. Please adjust your filters.")
         return
     
-    current_nw = totals_df.iloc[-1]['Amount']
+    current_nw = totals_df.iloc[-1]['amount']
     
     # Calculate historical metrics
     if len(totals_df) >= 2:
-        first_nw = totals_df.iloc[0]['Amount']
+        first_nw = totals_df.iloc[0]['amount']
         total_change = current_nw - first_nw
         avg_monthly_growth = total_change / len(totals_df) if len(totals_df) > 0 else 0
         
@@ -229,7 +229,7 @@ def show_growth_projections(filtered_df):
         
         with col3:
             months_tracked = len(totals_df)
-            st.metric("Months Tracked", months_tracked)
+            st.metric("months Tracked", months_tracked)
     else:
         avg_monthly_growth = 0
         st.warning("Need at least 2 months of data for projections.")
@@ -270,7 +270,7 @@ def show_growth_projections(filtered_df):
     
     with col1:
         monthly_contribution = st.number_input(
-            "Monthly Contribution ($)",
+            "monthly Contribution ($)",
             min_value=0,
             value=2500,
             step=500,
@@ -360,7 +360,7 @@ def show_growth_projections(filtered_df):
        # Sample key milestones
         if len(projection_df) > 12:
             # Show quarterly snapshots
-            milestone_rows = projection_df[projection_df['Month'] % 3 == 0].copy()
+            milestone_rows = projection_df[projection_df['month'] % 3 == 0].copy()
         else:
             milestone_rows = projection_df.copy()
         
@@ -385,7 +385,7 @@ def show_growth_projections(filtered_df):
         with col1:
             st.markdown("**With Investment Strategy**")
             st.write(f"Time to Goal: {time_str}")
-            st.write(f"Monthly Contribution: ${monthly_contribution:,.0f}")
+            st.write(f"monthly Contribution: ${monthly_contribution:,.0f}")
             st.write(f"Expected Return: {annual_return}%")
         
         with col2:
@@ -397,7 +397,7 @@ def show_growth_projections(filtered_df):
     # Assumptions and disclaimers
     st.divider()
     st.caption(f"""
-    **Assumptions:** Starting balance: ${current_nw:,.0f} | Monthly contribution: ${monthly_contribution:,.0f} | 
+    **Assumptions:** Starting balance: ${current_nw:,.0f} | monthly contribution: ${monthly_contribution:,.0f} | 
     Annual return: {annual_return}% ({compound_freq} compounding)
     """)
     

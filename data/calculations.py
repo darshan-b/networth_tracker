@@ -4,19 +4,22 @@ This module provides financial calculation utilities for analyzing account data,
 expenses, budgets, and trends.
 """
 
-from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 import pandas as pd
 import streamlit as st
 
-# Constants
-ACCOUNT_TYPE_LIABILITY = 'Liability'
+from constants import AccountTypes, ColumnNames
+from config import AnalysisConfig
+
+
+# Trend indicators
 TREND_UP = "↑"
 TREND_DOWN = "↓"
 TREND_FLAT = "→"
+
+# Days of week in order
 DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-DEFAULT_TOP_MERCHANTS = 10
 
 
 class FinancialCalculationError(Exception):
@@ -70,7 +73,7 @@ def calculate_account_info(
     """Calculate current values and trends for each account.
     
     Args:
-        data: Full dataset with columns ['Account', 'Month', 'Amount', 'Account Type']
+        data: Full dataset with columns ['account', 'month', 'amount', 'account_type']
         accounts: List of account names to analyze
         
     Returns:
@@ -78,12 +81,18 @@ def calculate_account_info(
             - value: Current account value
             - change: Change from previous period
             - trend: Trend indicator (↑, ↓, or →)
-            - type: Account type
+            - type: account_type
             
     Raises:
         FinancialCalculationError: If data is invalid or missing required columns
     """
-    _validate_dataframe(data, ['Account', 'Month', 'Amount', 'Account Type'], "data")
+    required_cols = [
+        ColumnNames.ACCOUNT,
+        ColumnNames.MONTH,
+        ColumnNames.AMOUNT,
+        ColumnNames.ACCOUNT_TYPE
+    ]
+    _validate_dataframe(data, required_cols, "data")
     
     if not accounts:
         st.warning("No accounts provided for calculation")
@@ -93,14 +102,14 @@ def calculate_account_info(
     
     for account in accounts:
         try:
-            acct_data = data[data['Account'] == account].sort_values('Month')
+            acct_data = data[data[ColumnNames.ACCOUNT] == account].sort_values(ColumnNames.MONTH)
             
             if acct_data.empty:
                 continue
             
             if len(acct_data) >= 2:
-                current_val = acct_data.iloc[-1]['Amount']
-                prev_val = acct_data.iloc[-2]['Amount']
+                current_val = acct_data.iloc[-1][ColumnNames.AMOUNT]
+                prev_val = acct_data.iloc[-2][ColumnNames.AMOUNT]
                 change = current_val - prev_val
                 
                 if change > 0:
@@ -110,7 +119,7 @@ def calculate_account_info(
                 else:
                     trend = TREND_FLAT
             elif len(acct_data) == 1:
-                current_val = acct_data.iloc[-1]['Amount']
+                current_val = acct_data.iloc[-1][ColumnNames.AMOUNT]
                 change = 0
                 trend = TREND_FLAT
             else:
@@ -120,7 +129,7 @@ def calculate_account_info(
                 'value': current_val,
                 'change': change,
                 'trend': trend,
-                'type': acct_data.iloc[-1]['Account Type']
+                'type': acct_data.iloc[-1][ColumnNames.ACCOUNT_TYPE]
             }
             
         except Exception as e:
@@ -134,7 +143,7 @@ def calculate_metrics(
     latest_data: pd.DataFrame, 
     previous_data: Optional[pd.DataFrame] = None
 ) -> Dict[str, float]:
-    """Calculate key financial netwroth account metrics.
+    """Calculate key financial networth account metrics.
     
     Args:
         latest_data: DataFrame for current month with columns ['Account Type', 'Amount']
@@ -154,16 +163,17 @@ def calculate_metrics(
     Raises:
         FinancialCalculationError: If data is invalid or missing required columns
     """
-    _validate_dataframe(latest_data, ['Account Type', 'Amount'], "latest_data")
+    required_cols = [ColumnNames.ACCOUNT_TYPE, ColumnNames.AMOUNT]
+    _validate_dataframe(latest_data, required_cols, "latest_data")
     
     # Current period calculations
     current_assets = latest_data[
-        latest_data['Account Type'] != ACCOUNT_TYPE_LIABILITY
-    ]['Amount'].sum()
+        latest_data[ColumnNames.ACCOUNT_TYPE] != AccountTypes.LIABILITY
+    ][ColumnNames.AMOUNT].sum()
     
     current_liabilities_raw = latest_data[
-        latest_data['Account Type'] == ACCOUNT_TYPE_LIABILITY
-    ]['Amount'].sum()
+        latest_data[ColumnNames.ACCOUNT_TYPE] == AccountTypes.LIABILITY
+    ][ColumnNames.AMOUNT].sum()
     
     current_liabilities = _convert_to_absolute(current_liabilities_raw)
     current_net_worth = current_assets + current_liabilities_raw
@@ -189,15 +199,15 @@ def calculate_metrics(
     # Previous period comparisons
     if previous_data is not None and not previous_data.empty:
         try:
-            _validate_dataframe(previous_data, ['Account Type', 'Amount'], "previous_data")
+            _validate_dataframe(previous_data, required_cols, "previous_data")
             
             prev_assets = previous_data[
-                previous_data['Account Type'] != ACCOUNT_TYPE_LIABILITY
-            ]['Amount'].sum()
+                previous_data[ColumnNames.ACCOUNT_TYPE] != AccountTypes.LIABILITY
+            ][ColumnNames.AMOUNT].sum()
             
             prev_liabilities_raw = previous_data[
-                previous_data['Account Type'] == ACCOUNT_TYPE_LIABILITY
-            ]['Amount'].sum()
+                previous_data[ColumnNames.ACCOUNT_TYPE] == AccountTypes.LIABILITY
+            ][ColumnNames.AMOUNT].sum()
             
             prev_liabilities = _convert_to_absolute(prev_liabilities_raw)
             prev_net_worth = prev_assets + prev_liabilities_raw
@@ -244,7 +254,7 @@ def calculate_expense_summary(
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['amount'], "df")
+    _validate_dataframe(df, [ColumnNames.AMOUNT], "df")
     
     if not isinstance(budgets, dict):
         raise FinancialCalculationError("budgets must be a dictionary")
@@ -253,7 +263,7 @@ def calculate_expense_summary(
         raise FinancialCalculationError("num_months must be at least 1")
     
     # Use absolute values for expenses
-    total_spent = _convert_to_absolute(df['amount'].sum())
+    total_spent = _convert_to_absolute(df[ColumnNames.AMOUNT].sum())
     # scale budget with number of months selected
     total_budget = sum(budgets.values()) * num_months
     remaining = total_budget - total_spent
@@ -278,16 +288,21 @@ def calculate_category_spending(df: pd.DataFrame) -> pd.DataFrame:
         
     Returns:
         DataFrame with columns ['category', 'amount'] sorted by amount descending.
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['category', 'amount'], "df")
+    required_cols = [ColumnNames.CATEGORY, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
-    category_spending = df.groupby('category')['amount'].sum().reset_index()
-    category_spending['amount'] = category_spending['amount'].apply(_convert_to_absolute)
-    category_spending = category_spending.sort_values('amount', ascending=False)
+    category_spending = (
+        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+        .reset_index()
+    )
+    category_spending[ColumnNames.AMOUNT] = category_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
+    category_spending = category_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
     
     return category_spending
 
@@ -300,16 +315,21 @@ def calculate_account_spending(df: pd.DataFrame) -> pd.DataFrame:
         
     Returns:
         DataFrame with columns ['account', 'amount'] sorted by amount descending.
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['account', 'amount'], "df")
+    required_cols = [ColumnNames.ACCOUNT, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
-    account_spending = df.groupby('account')['amount'].sum().reset_index()
-    account_spending['amount'] = account_spending['amount'].apply(_convert_to_absolute)
-    account_spending = account_spending.sort_values('amount', ascending=False)
+    account_spending = (
+        df.groupby(ColumnNames.ACCOUNT)[ColumnNames.AMOUNT]
+        .sum()
+        .reset_index()
+    )
+    account_spending[ColumnNames.AMOUNT] = account_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
+    account_spending = account_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
     
     return account_spending
 
@@ -322,20 +342,25 @@ def calculate_monthly_spending(df: pd.DataFrame) -> pd.DataFrame:
         
     Returns:
         DataFrame with columns ['month', 'amount'] sorted by month.
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['date', 'amount'], "df")
+    required_cols = [ColumnNames.DATE, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
     df_copy = df.copy()
     
     # Create month as datetime for proper plotting
-    df_copy['month'] = df_copy['date'].dt.to_period('M').dt.to_timestamp()
+    df_copy['month'] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
-    monthly_spending = df_copy.groupby('month')['amount'].sum().reset_index()
-    monthly_spending['amount'] = monthly_spending['amount'].apply(_convert_to_absolute)
+    monthly_spending = (
+        df_copy.groupby('month')[ColumnNames.AMOUNT]
+        .sum()
+        .reset_index()
+    )
+    monthly_spending[ColumnNames.AMOUNT] = monthly_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     monthly_spending = monthly_spending.sort_values('month')
     
     return monthly_spending
@@ -355,7 +380,7 @@ def calculate_budget_comparison(
         
     Returns:
         DataFrame with columns:
-            - Category: Category name
+            - Category: category name
             - Budget: Total budget for the period
             - Spent: Actual spending
             - Remaining: Budget remaining
@@ -364,7 +389,8 @@ def calculate_budget_comparison(
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['category', 'amount'], "df")
+    required_cols = [ColumnNames.CATEGORY, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
     if not isinstance(budgets, dict):
         raise FinancialCalculationError("budgets must be a dictionary")
@@ -373,7 +399,12 @@ def calculate_budget_comparison(
         raise FinancialCalculationError("num_months must be at least 1")
     
     # Get absolute spending by category from the filtered data
-    category_spending = df.groupby('category')['amount'].sum().apply(_convert_to_absolute).to_dict()
+    category_spending = (
+        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+        .apply(_convert_to_absolute)
+        .to_dict()
+    )
     
     budget_data = []
     for category, monthly_budget in budgets.items():
@@ -395,32 +426,36 @@ def calculate_budget_comparison(
 
 def calculate_top_merchants(
     df: pd.DataFrame, 
-    n: int = DEFAULT_TOP_MERCHANTS
+    limit: int = None
 ) -> pd.DataFrame:
     """Calculate top merchants by spending.
     
     Args:
         df: Transactions dataframe with columns ['merchant', 'amount']
-        n: Number of top merchants to return
+        limit: Number of top merchants to return (defaults to AnalysisConfig.TOP_MERCHANTS_LIMIT)
         
     Returns:
         DataFrame with columns ['merchant', 'amount'] for top n merchants.
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['merchant', 'amount'], "df")
+    required_cols = [ColumnNames.MERCHANT, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
-    if n < 1:
-        raise FinancialCalculationError("n must be at least 1")
+    if limit is None:
+        limit = AnalysisConfig.TOP_MERCHANTS_LIMIT
+    
+    if limit < 1:
+        raise FinancialCalculationError("limit must be at least 1")
     
     top_merchants = (
-        df.groupby('merchant')['amount']
+        df.groupby(ColumnNames.MERCHANT)[ColumnNames.AMOUNT]
         .sum()
         .apply(_convert_to_absolute)
         .sort_values(ascending=False)
-        .head(n)
+        .head(limit)
         .reset_index()
     )
     
@@ -435,18 +470,19 @@ def calculate_spending_by_dow(df: pd.DataFrame) -> pd.DataFrame:
         
     Returns:
         DataFrame with columns ['day_of_week', 'amount'] in weekday order.
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['date', 'amount'], "df")
+    required_cols = [ColumnNames.DATE, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
     df_copy = df.copy()
-    df_copy['day_of_week'] = df_copy['date'].dt.day_name()
+    df_copy['day_of_week'] = df_copy[ColumnNames.DATE].dt.day_name()
     
     dow_spending = (
-        df_copy.groupby('day_of_week')['amount']
+        df_copy.groupby('day_of_week')[ColumnNames.AMOUNT]
         .sum()
         .apply(_convert_to_absolute)
         .reindex(DAYS_OF_WEEK)
@@ -464,24 +500,25 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
         
     Returns:
         DataFrame with columns ['month', 'category', 'amount'].
-        Amounts are converted to absolute values.
+        amounts are converted to absolute values.
         
     Raises:
         FinancialCalculationError: If data is invalid
     """
-    _validate_dataframe(df, ['date', 'category', 'amount'], "df")
+    required_cols = [ColumnNames.DATE, ColumnNames.CATEGORY, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
     
     df_copy = df.copy()
     
     # Create month as datetime for proper plotting
-    df_copy['month'] = df_copy['date'].dt.to_period('M').dt.to_timestamp()
+    df_copy['month'] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
     category_monthly = (
-        df_copy.groupby(['month', 'category'])['amount']
+        df_copy.groupby(['month', ColumnNames.CATEGORY])[ColumnNames.AMOUNT]
         .sum()
         .reset_index()
     )
     
-    category_monthly['amount'] = category_monthly['amount'].apply(_convert_to_absolute)
+    category_monthly[ColumnNames.AMOUNT] = category_monthly[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     
     return category_monthly
