@@ -1,125 +1,218 @@
-"""Main application entry point for Net Worth Tracker."""
+"""Main application entry point for Personal Finance Tracker.
+
+This module serves as the main entry point for the Personal Finance Tracker application,
+handling navigation between Net Worth Tracker and Expense Tracker views.
+"""
+
+from typing import Optional
 
 import streamlit as st
-from data.loader import load_networth_data
+from pygwalker.api.streamlit import StreamlitRenderer
+
+from data.loader import load_networth_data, load_expense_transactions, load_budgets
 from data.filters import filter_data, get_filtered_accounts
 from data.calculations import calculate_account_info
-from ui.filters import render_header_filters, render_sidebar_filters
+from ui.components.filters import (
+    render_networth_header_filters,
+    render_networth_sidebar_filters,
+    render_expense_date_filter
+)
 from ui.dashboard import render_dashboard
 from growth_over_time_view import show_growth_over_time
 from pivot_table_view import show_pivot_table
 from growth_projections_view import show_growth_projections
 from expense_tracker_view import show_expense_tracker
-from pygwalker.api.streamlit import StreamlitRenderer
-from data.loader import load_expense_transactions, load_budgets
-from expense_tracker_view import get_date_range_options, apply_date_filter
 
-def main():
-    """Main application function."""
-    # Page configuration
-    st.set_page_config(page_title="Personal Finance Tracker", layout="wide")
-    
+# Constants
+APP_TITLE = "Personal Finance Tracker"
+PAGE_ICON = "💰"
+LAYOUT = "wide"
 
+# Navigation options
+NAV_NETWORTH = "Net Worth Tracker"
+NAV_EXPENSE = "Expense Tracker"
+
+# Tab names for Net Worth Tracker
+TAB_GROWTH = "Net Worth Over Time"
+TAB_TABLE = "Summarized Table"
+TAB_DASHBOARD = "Dashboard"
+TAB_PROJECTIONS = "Growth Projections"
+TAB_EXPLORER = "Data Explorer"
+
+
+@st.cache_resource
+def get_pyg_renderer(data) -> Optional[StreamlitRenderer]:
+    """Initialize PyGWalker renderer with caching.
     
-    # Sidebar navigation
-    st.sidebar.title("Navigation")
-    app_mode = st.sidebar.radio(
-        "Select View",
-        ["Net Worth Tracker", "Expense Tracker"]
-    )
-    
-    st.sidebar.markdown("---")
-    
-    # Header
-    st.header("Personal Finance Tracker")
-    
-    if app_mode == "📊 Net Worth Tracker":
+    Args:
+        data: DataFrame to visualize
+        
+    Returns:
+        StreamlitRenderer instance or None if initialization fails
+    """
+    try:
+        return StreamlitRenderer(data, spec_io_mode="rw")
+    except Exception as e:
+        st.error(f"Failed to initialize data explorer: {str(e)}")
+        return None
+
+
+def render_networth_tracker() -> None:
+    """Render the Net Worth Tracker view with error handling."""
+    try:
         # Load data
         data = load_networth_data()
+        
+        if data is None or data.empty:
+            st.warning("No net worth data available. Please check your data source.")
+            return
 
         # Render header filters
-        selected_account_types, selected_categories = render_header_filters(data)
+        selected_account_types, selected_categories = render_networth_header_filters(data)
+        
+        if not selected_account_types or not selected_categories:
+            st.info("Please select at least one account type and category to view data.")
+            return
         
         # Get filtered account list
         accounts = get_filtered_accounts(data, selected_account_types, selected_categories)
+        
+        if not accounts:
+            st.warning("No accounts match the selected filters.")
+            return
         
         # Calculate account info for sidebar
         account_info = calculate_account_info(data, accounts)
         
         # Render sidebar filters
-        selected_accounts = render_sidebar_filters(data, accounts, account_info)
+        selected_accounts = render_networth_sidebar_filters(data, accounts, account_info)
+        
+        if not selected_accounts:
+            st.warning("No accounts selected. Please select at least one account to view data.")
+            return
         
         # Apply all filters
         filtered_df = filter_data(data, selected_account_types, selected_categories, selected_accounts)
         
-        # Create tabs for Net Worth Tracker
-        tab_1, tab_2, tab_3, tab_4, tab_5 = st.tabs([
-            "Net Worth Over Time", 
-            "Summarized Table", 
-            "Dashboard", 
-            "Growth Projections", 
-            "Data Explorer"
-        ])
+        if filtered_df.empty:
+            st.warning("No data available for the selected filters.")
+            return
         
-        @st.cache_resource
-        def get_pyg_renderer() -> "StreamlitRenderer":
-            # If you want to use feature of saving chart config, set `spec_io_mode="rw"`
-            return StreamlitRenderer(data, spec_io_mode="rw")
-
-        with tab_1:
-            show_growth_over_time(filtered_df)
+        # Create tabs
+        tabs = st.tabs([TAB_GROWTH, TAB_TABLE, TAB_DASHBOARD, TAB_PROJECTIONS, TAB_EXPLORER])
         
-        with tab_2:
-            show_pivot_table(filtered_df)
+        with tabs[0]:
+            try:
+                show_growth_over_time(filtered_df)
+            except Exception as e:
+                st.error(f"Failed to display growth chart: {str(e)}")
+                with st.expander("Error Details"):
+                    st.exception(e)
         
-        with tab_3:
-            render_dashboard(filtered_df)
+        with tabs[1]:
+            try:
+                show_pivot_table(filtered_df)
+            except Exception as e:
+                st.error(f"Failed to display pivot table: {str(e)}")
+                with st.expander("Error Details"):
+                    st.exception(e)
+        
+        with tabs[2]:
+            try:
+                render_dashboard(filtered_df)
+            except Exception as e:
+                st.error(f"Failed to display dashboard: {str(e)}")
+                with st.expander("Error Details"):
+                    st.exception(e)
 
-        with tab_4:
-            show_growth_projections(filtered_df)
+        with tabs[3]:
+            try:
+                show_growth_projections(filtered_df)
+            except Exception as e:
+                st.error(f"Failed to display projections: {str(e)}")
+                with st.expander("Error Details"):
+                    st.exception(e)
 
-        with tab_5:
-            renderer = get_pyg_renderer()
-            renderer.explorer()
-    
-    elif app_mode == "💳 Expense Tracker":
+        with tabs[4]:
+            try:
+                renderer = get_pyg_renderer(data)
+                if renderer:
+                    renderer.explorer()
+                else:
+                    st.warning("Data explorer is not available.")
+            except Exception as e:
+                st.error(f"Failed to display data explorer: {str(e)}")
+                with st.expander("Error Details"):
+                    st.exception(e)
+                
+    except Exception as e:
+        st.error(f"An error occurred while loading the Net Worth Tracker: {str(e)}")
+        with st.expander("Error Details"):
+            st.exception(e)
 
+
+def render_expense_tracker() -> None:
+    """Render the Expense Tracker view with error handling."""
+    try:
+        # Load data
         df = load_expense_transactions()
         budgets = load_budgets()
         
-        # Global date filter (applies to all tabs)
-        # Global date filter in sidebar
-        st.sidebar.markdown("### 📅 Date Range Filter")
+        if df is None or df.empty:
+            st.warning(" No expense data available. Please check your data source.")
+            return
         
-        date_option = st.sidebar.selectbox(
-            "Select Period",
-            get_date_range_options(),
-            key="global_date_filter"
-        )
+        # Render date filter in sidebar and get filtered data
+        df_filtered, num_months, date_range_days = render_expense_date_filter(df)
         
-        # Apply global date filter
-        df_filtered = apply_date_filter(df, date_option, "global")
+        if df_filtered.empty:
+            st.warning(" No expenses found for the selected date range.")
+            return
         
-        # Calculate number of distinct months in the filtered range
-        if len(df_filtered) > 0:
-            df_filtered['year_month'] = df_filtered['date'].dt.to_period('M')
-            num_months = df_filtered['year_month'].nunique()
-            date_range_days = (df_filtered['date'].max() - df_filtered['date'].min()).days + 1
-            # Drop the temporary column
-            df_filtered = df_filtered.drop('year_month', axis=1)
-        else:
-            num_months = 1
-            date_range_days = 1
-        
-        # Display date range info in sidebar
-        st.sidebar.info(
-            f"📊 Showing data from **{df_filtered['date'].min().strftime('%Y-%m-%d')}** "
-            f"to **{df_filtered['date'].max().strftime('%Y-%m-%d')}**\n\n"
-            f"({date_range_days} days, {num_months} months)"
-        )
-        
-
+        # Show expense tracker with filtered data
         show_expense_tracker(df_filtered, budgets, num_months)
+        
+    except Exception as e:
+        st.error(f" An error occurred while loading the Expense Tracker: {str(e)}")
+        with st.expander("Error Details"):
+            st.exception(e)
+
+
+def main() -> None:
+    """Main application function with error handling and navigation."""
+    try:
+        # Page configuration
+        st.set_page_config(
+            page_title=APP_TITLE,
+            page_icon=PAGE_ICON,
+            layout=LAYOUT
+        )
+        
+        # Sidebar navigation
+        st.sidebar.title("Navigation")
+        app_mode = st.sidebar.radio(
+            "Select View",
+            [NAV_NETWORTH, NAV_EXPENSE],
+            help="Choose between Net Worth tracking and Expense tracking"
+        )
+        
+        st.sidebar.markdown("---")
+        
+        # Header
+        st.header(APP_TITLE)
+        
+        # Route to appropriate view
+        if app_mode == NAV_NETWORTH:
+            render_networth_tracker()
+        elif app_mode == NAV_EXPENSE:
+            render_expense_tracker()
+        else:
+            st.error(f" Unknown view selected: {app_mode}")
+            
+    except Exception as e:
+        st.error(" A critical error occurred. Please refresh the page or contact support.")
+        with st.expander("Error Details"):
+            st.exception(e)
 
 
 if __name__ == "__main__":

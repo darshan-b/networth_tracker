@@ -23,83 +23,7 @@ from data.calculations import (
     calculate_category_trends
 )
 
-
-def get_date_range_options():
-    """Get standard date range options."""
-    return [
-        "Last 7 days",
-        "Last 14 days", 
-        "Last 30 days",
-        "This month",
-        "Last month",
-        "This year",
-        "Last year",
-        "Custom range"
-    ]
-
-
-def apply_date_filter(df, date_option, key_prefix=""):
-    """Apply date filter to dataframe based on selected option.
-    
-    Args:
-        df: DataFrame to filter
-        date_option: Selected date range option
-        key_prefix: Prefix for streamlit widget keys
-        
-    Returns:
-        Filtered DataFrame
-    """
-    if date_option == "Custom range":
-        col_start, col_end = st.columns(2)
-        with col_start:
-            start_date = st.date_input(
-                "Start date", 
-                value=df['date'].min().date(), 
-                key=f"{key_prefix}_start"
-            )
-        with col_end:
-            end_date = st.date_input(
-                "End date", 
-                value=df['date'].max().date(), 
-                key=f"{key_prefix}_end"
-            )
-        
-        return df[(df['date'].dt.date >= start_date) & (df['date'].dt.date <= end_date)]
-    
-    # Apply predefined date filters
-    today = datetime.now()
-    
-    if date_option == "Last 7 days":
-        return df[df['date'] >= (today - pd.Timedelta(days=7))]
-    elif date_option == "Last 14 days":
-        return df[df['date'] >= (today - pd.Timedelta(days=14))]
-    elif date_option == "Last 30 days":
-        return df[df['date'] >= (today - pd.Timedelta(days=30))]
-    elif date_option == "This month":
-        return df[(df['date'].dt.month == today.month) & (df['date'].dt.year == today.year)]
-    elif date_option == "Last month":
-        last_month = today.replace(day=1) - pd.Timedelta(days=1)
-        return df[(df['date'].dt.month == last_month.month) & (df['date'].dt.year == last_month.year)]
-    elif date_option == "This year":
-        return df[df['date'].dt.year == today.year]
-    elif date_option == "Last year":
-        return df[df['date'].dt.year == (today.year - 1)]
-    else:
-        return df.copy()
-
-
-def filter_expenses(df):
-    """Filter dataframe for expenses only, excluding Income.
-    
-    Args:
-        df: Transactions dataframe
-        
-    Returns:
-        DataFrame with expenses only (category != 'Income')
-    """
-    return df[df['category'] != 'Income']
-
-
+from data.filters import filter_expenses
 
 def render_expense_overview(df, budgets, num_months=1):
     """Render expense overview tab.
@@ -698,9 +622,6 @@ def render_cashflow_sankey(df):
 def show_expense_tracker(df_filtered, budgets, num_months=1):
     """Main expense tracker view with sub-tabs."""
     # Load data
-
-    
-
     
     st.divider()
     
@@ -729,4 +650,4 @@ def show_expense_tracker(df_filtered, budgets, num_months=1):
         render_insights(df_expenses)
     
     with sub_tab5:
-        render_cashflow_sankey(df_expenses)
+        render_cashflow_sankey(df_filtered)
