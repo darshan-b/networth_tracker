@@ -1,7 +1,7 @@
 """Main application entry point for Net Worth Tracker."""
 
 import streamlit as st
-from data.loader import load_data
+from data.loader import load_networth_data
 from data.filters import filter_data, get_filtered_accounts
 from data.calculations import calculate_account_info
 from ui.filters import render_header_filters, render_sidebar_filters
@@ -11,7 +11,7 @@ from pivot_table_view import show_pivot_table
 from growth_projections_view import show_growth_projections
 from expense_tracker_view import show_expense_tracker
 from pygwalker.api.streamlit import StreamlitRenderer
-from data.expense_loader import load_transactions, load_budgets
+from data.loader import load_expense_transactions, load_budgets
 from expense_tracker_view import get_date_range_options, apply_date_filter
 
 def main():
@@ -20,7 +20,7 @@ def main():
     st.set_page_config(page_title="Personal Finance Tracker", layout="wide")
     
     # Load data
-    data = load_data()
+    data = load_networth_data()
     
     # Sidebar navigation
     st.sidebar.title("Navigation")
@@ -82,7 +82,7 @@ def main():
     
     elif app_mode == "💳 Expense Tracker":
 
-        df = load_transactions()
+        df = load_expense_transactions()
         budgets = load_budgets()
         
         # Global date filter (applies to all tabs)

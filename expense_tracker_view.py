@@ -12,7 +12,7 @@ from datetime import datetime
 import json
 import streamlit.components.v1 as components
 
-from data.expense_loader import load_transactions, load_budgets
+from data.loader import load_expense_transactions, load_budgets
 from data.expense_calculations import (
     calculate_expense_summary,
     calculate_category_spending,
