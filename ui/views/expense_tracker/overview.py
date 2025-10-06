@@ -73,10 +73,10 @@ def render_overview_tab(df, budgets, num_months=1):
     col1, col2 = st.columns(2)
     
     with col1:
-        _render_category_pie_chart(df)
+        _render_category_pie_chart(df[df[ColumnNames.CATEGORY]!='Income'])
     
     with col2:
-        _render_spending_trend_chart(df)
+        _render_spending_trend_chart(df[df[ColumnNames.CATEGORY]!='Income'])
 
 
 def _render_summary_metrics(summary):
@@ -86,17 +86,28 @@ def _render_summary_metrics(summary):
     Args:
         summary (dict): Dictionary containing summary statistics
     """
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3= st.columns(3)
     
     with col1:
         st.metric("Total Spent", f"${summary['total_spent']:,.2f}", border=True, height='stretch')
         color_widget_text(f"${summary['total_spent']:,.2f}") 
     
     with col2:
+        st.metric("Total Income", f"${summary['total_income']:,.2f}", border=True, height='stretch')
+        color_widget_text(f"${summary['total_income']:,.2f}")
+
+    with col3:
+        st.metric("Total Savings", f"${summary['total_savings']:,.2f}", delta=f"{summary['savings_rate']}%", border=True, height='stretch')
+        color_widget_text(f"${summary['total_savings']:,.2f}")
+
+
+    col4, col5, _ = st.columns(3)
+    
+    with col4:
         st.metric("Total Budget", f"${summary['total_budget']:,.2f}", border=True, height='stretch')
         color_widget_text(f"${summary['total_budget']:,.2f}") 
     
-    with col3:
+    with col5:
         remaining = summary['remaining']
         budget = summary['total_budget']
         color = "red" if remaining < 0 else "green"      
@@ -106,10 +117,6 @@ def _render_summary_metrics(summary):
             color_widget_text(f"${remaining:,.2f}", '#FF0000') 
         else:
             color_widget_text(f"${remaining:,.2f}", '#00B050') 
-    
-    with col4:
-        st.metric("Transactions", summary['num_transactions'], border=True, height='stretch')
-        color_widget_text(str(summary['num_transactions'])) 
 
 
 def _render_category_pie_chart(df):

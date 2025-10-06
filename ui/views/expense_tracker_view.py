@@ -95,7 +95,7 @@ def show_expense_tracker(
     with tabs[0]:
         safe_render_tab(
             render_overview_tab,
-            df_expenses,
+            df_filtered,
             budgets,
             num_months,
             error_context="overview"
@@ -123,7 +123,7 @@ def show_expense_tracker(
     with tabs[3]:
         safe_render_tab(
             render_insights_tab,
-            df_expenses,
+            df_filtered,
             error_context="insights"
         )
     

@@ -6,12 +6,17 @@ Provides analytical insights including top merchants, spending patterns, and tre
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from data.calculations import (
     calculate_top_merchants,
     calculate_spending_by_dow,
-    calculate_category_trends
+    calculate_category_trends,
+    _convert_to_absolute
 )
 from constants import ColumnNames
+import plotly.io as pio
+pio.templates.default = 'plotly_dark' 
+
 
 
 def render_insights_tab(df):
@@ -31,7 +36,7 @@ def render_insights_tab(df):
         return
     
     # Top merchants analysis
-    _render_top_merchants(df)
+    _render_top_merchants(df[df[ColumnNames.CATEGORY]!='Income'])
     
     st.divider()
     
@@ -39,20 +44,22 @@ def render_insights_tab(df):
     col1, col2 = st.columns(2)
     
     with col1:
-        _render_dow_spending(df)
+        _render_dow_spending(df[df[ColumnNames.CATEGORY]!='Income'])
     
     with col2:
-        _render_avg_transaction_by_category(df)
+        _render_avg_transaction_by_category(df[df[ColumnNames.CATEGORY]!='Income'])
     
     st.divider()
     
     # Summary statistics
-    _render_summary_statistics(df)
+    _render_summary_statistics(df[df[ColumnNames.CATEGORY]!='Income'])
     
     st.divider()
     
     # category trends over time
-    _render_category_trends(df)
+    _render_category_trends(df[df[ColumnNames.CATEGORY]!='Income'])
+
+    _render_cash_flow(df)
 
 
 def _render_top_merchants(df):
@@ -62,29 +69,84 @@ def _render_top_merchants(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Top Merchants")
+    st.markdown("<h3 style='text-align: center;'>Expenses Breakdown</h3>", unsafe_allow_html=True)
     
     try:
+        # Prepare data for all charts first
         top_merchants = calculate_top_merchants(df, limit=10)
-        
-        if top_merchants.empty:
-            st.info("No merchant data available.")
-            return
-        
-        fig = px.bar(
-            top_merchants, 
-            x=ColumnNames.AMOUNT, 
-            y=ColumnNames.MERCHANT, 
-            orientation='h',
-            color=ColumnNames.AMOUNT,
-            color_continuous_scale='Reds'
-        )
-        fig.update_layout(
-            showlegend=False, 
-            xaxis_title="amount ($)", 
-            yaxis_title=""
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        top_categories = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().apply(_convert_to_absolute).sort_values(ascending=False).head(10).reset_index()
+        top_subcategories = df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT].sum().apply(_convert_to_absolute).sort_values(ascending=False).head(10).reset_index()
+
+        # Pill buttons for selection
+        col1, col2 = st.columns([2, 3])
+        with col2:
+            selected = st.pills(
+                "View",
+                ["By Merchant", "By Category", "By Subcategory"],
+                label_visibility="collapsed"
+            )
+
+        # Display based on selection
+        with st.container(border=True):
+            if selected == "By Merchant":
+                st.subheader("By Merchant")
+                
+                fig = px.bar(
+                    top_merchants,
+                    x=ColumnNames.AMOUNT,
+                    y=ColumnNames.MERCHANT,
+                    orientation='h',
+                    color=ColumnNames.MERCHANT,
+                    text=ColumnNames.AMOUNT
+                )
+                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
+                fig.update_layout(
+                    showlegend=False,
+                    xaxis_title="Amount ($)",
+                    yaxis_title="",
+                    yaxis={'categoryorder': 'total ascending'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+            elif selected == "By Category":
+                st.subheader("By Category")
+                
+                fig = px.bar(
+                    top_categories,
+                    x=ColumnNames.AMOUNT,
+                    y=ColumnNames.CATEGORY,
+                    orientation='h',
+                    color=ColumnNames.CATEGORY,
+                    text=ColumnNames.AMOUNT
+                )
+                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
+                fig.update_layout(
+                    showlegend=False,
+                    xaxis_title="Amount ($)",
+                    yaxis_title="",
+                    yaxis={'categoryorder': 'total ascending'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+            else:  # By Subcategory
+                st.subheader("By Subcategory")
+                
+                fig = px.bar(
+                    top_subcategories,
+                    x=ColumnNames.AMOUNT,
+                    y=ColumnNames.SUBCATEGORY,
+                    orientation='h',
+                    color=ColumnNames.SUBCATEGORY,
+                    text=ColumnNames.AMOUNT
+                )
+                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
+                fig.update_layout(
+                    showlegend=False,
+                    xaxis_title="Amount ($)",
+                    yaxis_title="",
+                     yaxis={'categoryorder': 'total ascending'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
         st.error(f"Error rendering top merchants: {str(e)}")
@@ -232,3 +294,81 @@ def _render_category_trends(df):
         
     except Exception as e:
         st.error(f"Error rendering category trends: {str(e)}")
+
+
+def _render_cash_flow(df):
+
+    
+    st.markdown("<h3 style='text-align: center;'>Cash Flow by Month</h3>", unsafe_allow_html=True)
+
+    # Create figure
+    fig = go.Figure()
+
+    df['month'] = df[ColumnNames.DATE].dt.to_period('M').astype(str)
+
+    income = df[df[ColumnNames.CATEGORY]=='Income']
+    income = income.groupby(['month'])[ColumnNames.AMOUNT].sum()
+
+    expense = df[df[ColumnNames.CATEGORY]!='Income']
+    expense = expense.groupby(['month'])[ColumnNames.AMOUNT].sum()
+
+    savings = df.groupby(['month'])[ColumnNames.AMOUNT].sum()
+
+    # Add positive bars (green)
+    fig.add_trace(go.Bar(
+        x=income.index,
+        y=income.values,
+        marker_color='rgba(144, 238, 144, 0.9)',
+        hovertemplate='Income: %{y:$,.0f}<extra></extra>',
+        name='Income'
+    ))
+
+    # Add negative bars (red/pink)
+    fig.add_trace(go.Bar(
+        x=expense.index,
+        y=expense.values,
+        marker_color='rgba(255, 182, 193, 0.9)',
+        hovertemplate='Expenses: %{y:$,.0f}<extra></extra>',
+        name='Expenses'
+    ))
+
+    # Add solid line for savings
+    fig.add_trace(go.Scatter(
+        x=savings.index, 
+        y=savings.values,
+        mode='lines+markers',
+        name='Savings',
+        line=dict(color='blue', width=2),
+        hovertemplate='Savings: %{y:$,.0f}<extra></extra>'
+    ))
+
+    # Update layout
+    fig.update_layout(
+        barmode='relative',  # Stack bars
+        height=400,
+        margin=dict(l=50, r=50, t=50, b=50),
+        # plot_bgcolor='white',
+        xaxis=dict(
+            showgrid=True,
+            gridcolor='lightgray',
+            showline=True,
+            linecolor='lightgray'
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='lightgray',
+            showline=True,
+            linecolor='lightgray',
+            tickformat='$,.0f',
+            tickprefix='',
+            zeroline=True,
+            zerolinecolor='lightgray'
+        ),
+        hovermode='x unified',
+        showlegend=False,
+        template = 'plotly_dark'
+    )
+    container = st.container(border=True)  # Simple built-in border
+
+    with container:
+        st.plotly_chart(fig, use_container_width=True)

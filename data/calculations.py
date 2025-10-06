@@ -263,11 +263,17 @@ def calculate_expense_summary(
         raise FinancialCalculationError("num_months must be at least 1")
     
     # Use absolute values for expenses
-    total_spent = _convert_to_absolute(df[ColumnNames.AMOUNT].sum())
+    total_spent = _convert_to_absolute(df[df[ColumnNames.CATEGORY]!='Income'][ColumnNames.AMOUNT].sum())
     # scale budget with number of months selected
     total_budget = sum(budgets.values()) * num_months
     remaining = total_budget - total_spent
     num_transactions = len(df)
+    total_income = df[df[ColumnNames.CATEGORY]=='Income'][ColumnNames.AMOUNT].sum()
+    total_savings = total_income-total_spent
+    savings_rate = round((total_income-total_spent)*100/total_income,2)
+    # not sure about this
+    savings_rate = savings_rate if savings_rate>0.0 else 0
+    # total_savings = total_savings if savings_rate>0.0 else 0
     
     avg_transaction = total_spent / num_transactions if num_transactions > 0 else 0.0
     
@@ -276,7 +282,10 @@ def calculate_expense_summary(
         'total_budget': total_budget,
         'remaining': remaining,
         'num_transactions': num_transactions,
-        'avg_transaction': avg_transaction
+        'avg_transaction': avg_transaction,
+        'total_income': total_income,
+        'total_savings': total_savings,
+        'savings_rate' : savings_rate
     }
 
 

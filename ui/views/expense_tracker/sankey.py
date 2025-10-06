@@ -8,6 +8,8 @@ import pandas as pd
 import json
 import streamlit.components.v1 as components
 from constants import ColumnNames
+from data.calculations import calculate_expense_summary
+from ui.views.expense_tracker.overview import _render_summary_metrics
 
 
 # Color scheme for categories
@@ -50,6 +52,8 @@ def render_sankey_tab(df):
     
     st.divider()
 
+    summary = calculate_expense_summary(df, budgets, num_months)
+    _render_summary_metrics(summary)
 
 def _generate_sankey_data(df):
     """
@@ -169,8 +173,6 @@ def _generate_sankey_data(df):
         node_idx += 1
 
     return {"nodes": nodes, "links": links}
-
-
 
 
 def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx):
