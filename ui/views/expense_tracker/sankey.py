@@ -67,27 +67,80 @@ def _generate_sankey_data(df):
     nodes = []
     links = []
     node_map = {}
+    node_idx = 0
     
-    # Calculate total expenses (use absolute value)
-    total_expenses = abs(df[ColumnNames.AMOUNT].sum())
+    # Separate income and expenses (assuming positive = income, negative = expense)
+    income_df = df[df[ColumnNames.CATEGORY] == 'Income']
+    expense_df = df[df[ColumnNames.CATEGORY] != 'Income']
     
-    # Add total node
+    total_income = income_df[ColumnNames.AMOUNT].sum()
+    total_expenses = abs(expense_df[ColumnNames.AMOUNT].sum())
+    
+    # Add income subcategory/category nodes
+    income_sources = {}
+    for category in income_df[ColumnNames.CATEGORY].unique():
+        category_income_df = income_df[income_df[ColumnNames.CATEGORY] == category]
+        
+        # Check if there are subcategories
+        has_subcategories = (
+            category_income_df[ColumnNames.SUBCATEGORY].notna() & 
+            (category_income_df[ColumnNames.SUBCATEGORY] != '')
+        ).any()
+        
+        if has_subcategories:
+            # Group by subcategory
+            subcategory_totals = (
+                category_income_df[category_income_df[ColumnNames.SUBCATEGORY].notna() & 
+                                 (category_income_df[ColumnNames.SUBCATEGORY] != '')]
+                .groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
+                .sum()
+            )
+            
+            for subcategory, amount in subcategory_totals.items():
+                source_name = f"{category} - {subcategory}"
+                income_sources[source_name] = amount
+        else:
+            # Use category as income source
+            amount = category_income_df[ColumnNames.AMOUNT].sum()
+            income_sources[category] = amount
+    
+    # Add income source nodes
+    for source_name, amount in sorted(income_sources.items(), key=lambda x: x[1], reverse=True):
+        pct = (amount / total_income * 100) if total_income > 0 else 0
+        nodes.append({
+            "name": source_name,
+            "displayName": f"{source_name}<br/>${amount:,.2f} ({pct:.1f}%)",
+            "color": CATEGORY_COLORS.get('Total', '#3b82f6')
+        })
+        node_map[source_name] = node_idx
+        node_idx += 1
+    
+    # Add Total Income node
+    total_income_idx = node_idx
     nodes.append({
-        "name": "Total Expenses",
-        "displayName": f"Total Expenses<br/>${total_expenses:,.2f}",
+        "name": "Total Income",
+        "displayName": f"Total Income<br/>${total_income:,.2f}",
         "color": CATEGORY_COLORS['Total']
     })
-    node_map['Total'] = 0
-    node_idx = 1
+    node_map['Total Income'] = node_idx
+    node_idx += 1
     
-    # Group by category
+    # Link income sources to Total Income
+    for source_name, amount in income_sources.items():
+        links.append({
+            "source": node_map[source_name],
+            "target": total_income_idx,
+            "value": float(amount)
+        })
+    
+    # Group expenses by category
     category_totals = (
-        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .apply(lambda x: abs(x.sum()))
         .sort_values(ascending=False)
     )
     
-    # Add category nodes and links
+    # Add expense category nodes and links from Total Income to categories
     for category, amount in category_totals.items():
         pct = (amount / total_expenses * 100) if total_expenses > 0 else 0
         
@@ -98,17 +151,20 @@ def _generate_sankey_data(df):
         })
         node_map[category] = node_idx
         
+        # Link from Total Income to expense category
         links.append({
-            "source": 0,
+            "source": total_income_idx,
             "target": node_idx,
             "value": float(amount)
         })
         node_idx += 1
     
-    # Add subcategory nodes
+    # Add expense subcategory nodes
+    # Categories are already sorted by amount (descending)
+    # Subcategories within each category will also be sorted by amount (descending)
     for category in category_totals.index:
         node_idx = _add_subcategory_nodes(
-            df, 
+            expense_df, 
             category, 
             category_totals[category],
             node_map,
@@ -117,9 +173,24 @@ def _generate_sankey_data(df):
             node_idx
         )
     
+    # Add Savings node last to ensure it appears at the bottom
+    remaining = total_income - total_expenses
+    if remaining > 0:
+        pct = (remaining / total_income * 100) if total_income > 0 else 0
+        nodes.append({
+            "name": "Savings",
+            "displayName": f"Savings<br/>${remaining:,.2f} ({pct:.1f}%)",
+            "color": CATEGORY_COLORS.get('Savings', '#22c55e')
+        })
+        
+        # Link from Total Income to Savings
+        links.append({
+            "source": total_income_idx,
+            "target": node_idx,
+            "value": float(remaining)
+        })
+    
     return {"nodes": nodes, "links": links}
-
-
 def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx):
     """
     Add subcategory nodes and links for a given category.
