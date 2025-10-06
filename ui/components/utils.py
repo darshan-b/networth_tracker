@@ -79,7 +79,7 @@ def render_filter_row(
         
     Example:
         filters_config = [
-            {'type': 'selectbox', 'label': 'category', 'options': ['All', 'Food', 'Gas']},
+            {'type': 'selectbox', 'label': ColumnNames.DATE, 'options': ['All', 'Food', 'Gas']},
             {'type': 'text_input', 'label': 'Search', 'default': ''}
         ]
         selections = render_filter_row(filters_config)
@@ -259,7 +259,7 @@ def render_period_badge(num_periods: int, period_type: str = "month") -> None:
     
     Args:
         num_periods: Number of periods
-        period_type: Type of period ('month', 'quarter', 'year')
+        period_type: Type of period (ColumnNames.MONTH, 'quarter', 'year')
     """
     period_plural = f"{period_type}s" if num_periods != 1 else period_type
     

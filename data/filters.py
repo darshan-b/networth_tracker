@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple, Union
 import pandas as pd
 import streamlit as st
 
+from constants import ColumnNames
 # Constants for date range options
 DATE_RANGE_LAST_7 = "Last 7 days"
 DATE_RANGE_LAST_14 = "Last 14 days"
@@ -21,11 +22,11 @@ DATE_RANGE_LAST_YEAR = "Last year"
 DATE_RANGE_CUSTOM = "Custom range"
 
 # Column name constants
-COL_ACCOUNT_TYPE = 'account_type'
-COL_CATEGORY = 'category'
-COL_ACCOUNT = 'account'
-COL_DATE = 'date'
-COL_CATEGORY_EXPENSE = 'category'
+COL_ACCOUNT_TYPE = ColumnNames.ACCOUNT_TYPE
+COL_CATEGORY = ColumnNames.CATEGORY
+COL_ACCOUNT = ColumnNames.ACCOUNT
+COL_DATE = ColumnNames.DATE
+COL_CATEGORY_EXPENSE = ColumnNames.CATEGORY
 
 
 def filter_data(data: pd.DataFrame, account_types: List[str], categories: List[str], accounts: List[str]) -> pd.DataFrame:
@@ -175,7 +176,7 @@ def filter_by_date_range(df: pd.DataFrame, start_date: Union[datetime, pd.Timest
     """Filter dataframe by date range with validation.
     
     Args:
-        df: DataFrame to filter (must have 'date' column)
+        df: DataFrame to filter (must have ColumnNames.DATE column)
         start_date: Start date (datetime or date)
         end_date: End date (datetime or date)
         
@@ -184,7 +185,7 @@ def filter_by_date_range(df: pd.DataFrame, start_date: Union[datetime, pd.Timest
         
     Raises:
         ValueError: If inputs are invalid
-        KeyError: If 'date' column is missing
+        KeyError: If ColumnNames.DATE column is missing
     """
     try:
         if COL_DATE not in df.columns:
@@ -213,13 +214,13 @@ def filter_expenses(df: pd.DataFrame) -> pd.DataFrame:
     """Filter dataframe for expenses only, excluding Income.
     
     Args:
-        df: Transactions dataframe (must have 'category' column)
+        df: Transactions dataframe (must have ColumnNames.DATE column)
         
     Returns:
         DataFrame with expenses only (category != 'Income')
         
     Raises:
-        KeyError: If 'category' column is missing
+        KeyError: If ColumnNames.DATE column is missing
     """
     try:        
         if COL_CATEGORY_EXPENSE not in df.columns:

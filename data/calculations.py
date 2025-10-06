@@ -73,7 +73,7 @@ def calculate_account_info(
     """Calculate current values and trends for each account.
     
     Args:
-        data: Full dataset with columns ['account', 'month', 'amount', 'account_type']
+        data: Full dataset with columns [ColumnNames.ACCOUNT, ColumnNames.MONTH, ColumnNames.AMOUNT, 'account_type']
         accounts: List of account names to analyze
         
     Returns:
@@ -239,7 +239,7 @@ def calculate_expense_summary(
     """Calculate summary statistics for expenses.
     
     Args:
-        df: Transactions dataframe (already filtered for expenses) with column ['amount']
+        df: Transactions dataframe (already filtered for expenses) with column [ColumnNames.AMOUNT]
         budgets: Dictionary mapping category names to monthly budget amounts
         num_months: Number of distinct months in the selected range
         
@@ -284,10 +284,10 @@ def calculate_category_spending(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate spending by category.
     
     Args:
-        df: Transactions dataframe with columns ['category', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.CATEGORY, ColumnNames.AMOUNT]
         
     Returns:
-        DataFrame with columns ['category', 'amount'] sorted by amount descending.
+        DataFrame with columns [ColumnNames.CATEGORY, ColumnNames.AMOUNT] sorted by amount descending.
         amounts are converted to absolute values.
         
     Raises:
@@ -315,10 +315,10 @@ def calculate_account_spending(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate spending by account.
     
     Args:
-        df: Transactions dataframe with columns ['account', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.ACCOUNT, ColumnNames.AMOUNT]
         
     Returns:
-        DataFrame with columns ['account', 'amount'] sorted by amount descending.
+        DataFrame with columns [ColumnNames.ACCOUNT, ColumnNames.AMOUNT] sorted by amount descending.
         amounts are converted to absolute values.
         
     Raises:
@@ -342,10 +342,10 @@ def calculate_monthly_spending(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate monthly spending trend.
     
     Args:
-        df: Transactions dataframe with columns ['date', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.DATE, ColumnNames.AMOUNT]
         
     Returns:
-        DataFrame with columns ['month', 'amount'] sorted by month.
+        DataFrame with columns [ColumnNames.MONTH, ColumnNames.AMOUNT] sorted by month.
         amounts are converted to absolute values.
         
     Raises:
@@ -357,15 +357,15 @@ def calculate_monthly_spending(df: pd.DataFrame) -> pd.DataFrame:
     df_copy = df.copy()
     
     # Create month as datetime for proper plotting
-    df_copy['month'] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
+    df_copy[ColumnNames.MONTH] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
     monthly_spending = (
-        df_copy.groupby('month')[ColumnNames.AMOUNT]
+        df_copy.groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
         .sum()
         .reset_index()
     )
     monthly_spending[ColumnNames.AMOUNT] = monthly_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
-    monthly_spending = monthly_spending.sort_values('month')
+    monthly_spending = monthly_spending.sort_values(ColumnNames.MONTH)
     
     return monthly_spending
 
@@ -378,7 +378,7 @@ def calculate_budget_comparison(
     """Calculate budget vs actual spending for the filtered period.
     
     Args:
-        df: Transactions dataframe with columns ['category', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.CATEGORY, ColumnNames.AMOUNT]
         budgets: Dictionary mapping category names to monthly budget amounts
         num_months: Number of distinct months in the selected range
         
@@ -418,7 +418,7 @@ def calculate_budget_comparison(
         percentage = (spent / scaled_budget * 100) if scaled_budget > 0 else 0.0
         
         budget_data.append({
-            'Category': category,
+            ColumnNames.CATEGORY: category,
             'Budget': scaled_budget,
             'Spent': spent,
             'Remaining': remaining,
@@ -435,11 +435,11 @@ def calculate_top_merchants(
     """Calculate top merchants by spending.
     
     Args:
-        df: Transactions dataframe with columns ['merchant', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.MERCHANT, ColumnNames.AMOUNT]
         limit: Number of top merchants to return (defaults to AnalysisConfig.TOP_MERCHANTS_LIMIT)
         
     Returns:
-        DataFrame with columns ['merchant', 'amount'] for top n merchants.
+        DataFrame with columns [ColumnNames.MERCHANT, ColumnNames.AMOUNT] for top n merchants.
         amounts are converted to absolute values.
         
     Raises:
@@ -470,10 +470,10 @@ def calculate_spending_by_dow(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate spending by day of week.
     
     Args:
-        df: Transactions dataframe with columns ['date', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.DATE, ColumnNames.AMOUNT]
         
     Returns:
-        DataFrame with columns ['day_of_week', 'amount'] in weekday order.
+        DataFrame with columns ['day_of_week', ColumnNames.AMOUNT] in weekday order.
         amounts are converted to absolute values.
         
     Raises:
@@ -500,10 +500,10 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
     """Calculate category spending trends over time.
     
     Args:
-        df: Transactions dataframe with columns ['date', 'category', 'amount']
+        df: Transactions dataframe with columns [ColumnNames.DATE, ColumnNames.CATEGORY, ColumnNames.AMOUNT]
         
     Returns:
-        DataFrame with columns ['month', 'category', 'amount'].
+        DataFrame with columns [ColumnNames.MONTH, ColumnNames.CATEGORY, ColumnNames.AMOUNT].
         amounts are converted to absolute values.
         
     Raises:
@@ -515,10 +515,10 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
     df_copy = df.copy()
     
     # Create month as datetime for proper plotting
-    df_copy['month'] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
+    df_copy[ColumnNames.MONTH] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
     category_monthly = (
-        df_copy.groupby(['month', ColumnNames.CATEGORY])[ColumnNames.AMOUNT]
+        df_copy.groupby([ColumnNames.MONTH, ColumnNames.CATEGORY])[ColumnNames.AMOUNT]
         .sum()
         .reset_index()
     )

@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 from config import ChartConfig, ColorSchemes
 import plotly.io as pio
 pio.templates.default = 'plotly_dark' 
+from constants import ColumnNames
 
 def create_bar_chart(
     data: pd.Series,
@@ -365,8 +366,8 @@ def create_donut_chart(data, title):
 def create_top_accounts_chart(top_accounts):
     """Legacy function for top accounts chart."""
     data = pd.Series(
-        top_accounts['amount'].values,
-        index=top_accounts['account'].values
+        top_accounts[ColumnNames.AMOUNT].values,
+        index=top_accounts[ColumnNames.ACCOUNT].values
     )
     
     fig = create_bar_chart(
@@ -377,7 +378,7 @@ def create_top_accounts_chart(top_accounts):
     
     # Add category to hover
     fig.update_traces(
-        customdata=top_accounts['category'].values,
+        customdata=top_accounts[ColumnNames.CATEGORY].values,
         hovertemplate='<b>%{y}</b><br>amount: $%{x:,.0f}<br>category: %{customdata}<extra></extra>'
     )
     

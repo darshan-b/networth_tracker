@@ -1,6 +1,7 @@
 """Application-wide configuration settings."""
 
 import plotly.express as px
+from constants import ColumnNames
 
 
 class ChartConfig:
@@ -143,12 +144,12 @@ class DataConfig:
     """Data processing configuration."""
     
     # Required columns for different views
-    EXPENSE_REQUIRED_COLUMNS = ['date', 'amount', 'category', 'merchant', 'account']
-    NETWORTH_REQUIRED_COLUMNS = ['month', 'amount', 'account_type', 'category']
+    EXPENSE_REQUIRED_COLUMNS = [ColumnNames.DATE, ColumnNames.AMOUNT, ColumnNames.CATEGORY, ColumnNames.MERCHANT, ColumnNames.ACCOUNT]
+    NETWORTH_REQUIRED_COLUMNS = [ColumnNames.MONTH, ColumnNames.AMOUNT, 'account_type', ColumnNames.CATEGORY]
     
     # Column type mappings
-    NUMERIC_COLUMNS = ['amount', 'amount']
-    DATE_COLUMNS = ['date', 'month']
+    NUMERIC_COLUMNS = [ColumnNames.AMOUNT, ColumnNames.AMOUNT]
+    DATE_COLUMNS = [ColumnNames.DATE, ColumnNames.MONTH]
     
     # Data validation
     MIN_ROWS_FOR_ANALYSIS = 2

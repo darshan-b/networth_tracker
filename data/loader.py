@@ -5,6 +5,7 @@ from typing import Dict
 
 import pandas as pd
 import streamlit as st
+from constants import ColumnNames
 
 
 # Directory configuration
@@ -29,10 +30,10 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         data = pd.read_csv(filepath)
         
         # Process date and amount columns
-        data['month'] = pd.to_datetime(data['month'])
-        data['amount'] = data['amount'].round().astype(int)
-        data['month_Str'] = data['month'].dt.strftime('%b-%Y')
-        data = data.sort_values('month')
+        data[ColumnNames.MONTH] = pd.to_datetime(data[ColumnNames.MONTH])
+        data[ColumnNames.AMOUNT] = data[ColumnNames.AMOUNT].round().astype(int)
+        data['month_Str'] = data[ColumnNames.MONTH].dt.strftime('%b-%Y')
+        data = data.sort_values(ColumnNames.MONTH)
         
         return data
         
@@ -58,7 +59,7 @@ def load_expense_transactions(filename: str = 'transactions.csv') -> pd.DataFram
     
     try:
         df = pd.read_csv(filepath)
-        df['date'] = pd.to_datetime(df['date'])
+        df[ColumnNames.DATE] = pd.to_datetime(df[ColumnNames.DATE])
         
         # Add 'type' column if it doesn't exist
         if 'type' not in df.columns:
@@ -92,7 +93,7 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
     if csv_path.exists():
         try:
             budget_df = pd.read_csv(csv_path)
-            return dict(zip(budget_df['category'], budget_df['budget']))
+            return dict(zip(budget_df[ColumnNames.DATE], budget_df['budget']))
         except Exception as e:
             st.warning(f"Warning: Error loading budgets from CSV: {e}. Using defaults.")
     
@@ -100,7 +101,7 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
     elif xlsx_path.exists():
         try:
             budget_df = pd.read_excel(xlsx_path)
-            return dict(zip(budget_df['category'], budget_df['budget']))
+            return dict(zip(budget_df[ColumnNames.DATE], budget_df['budget']))
         except Exception as e:
             st.warning(f"Warning: Error loading budgets from Excel: {e}. Using defaults.")
     

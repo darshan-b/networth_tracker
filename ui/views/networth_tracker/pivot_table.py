@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+from constants import ColumnNames
 
 
 def calculate_progress(current_value, past_value):
@@ -39,7 +40,7 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="month"):
     Args:
         pivot_df (pd.DataFrame): Pivot table including Grand Total row.
         month_cols (list): List of month column names (already filtered by comparison type).
-        comparison_type (str): "month", "Quarter", or "Year" for primary comparison.
+        comparison_type (str): "Month", "Quarter", or "Year" for primary comparison.
     """
     st.markdown("### Key Metrics")
     grand_total_row = pivot_df.iloc[-1]
@@ -77,7 +78,7 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
     and add a Grand Total row. Filter columns based on comparison type.
     
     Args:
-        filtered_df (pd.DataFrame): Filtered data containing 'account_type', 'category', 'month_Str', and 'amount'.
+        filtered_df (pd.DataFrame): Filtered data containing ColumnNames.ACCOUNT_TYPE, ColumnNames.DATE, 'month_Str', and ColumnNames.AMOUNT.
         rollup (bool): If True, summarize by account_type only. Otherwise, include category.
         comparison_type (str): "month", "Quarter", or "Year" to determine column intervals.
     
@@ -86,14 +87,14 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
             pivot_df (pd.DataFrame): Pivot table including Grand Total.
             month_cols (list): Ordered list of month columns (filtered by comparison type).
     """
-    months_order = filtered_df[['month', 'month_Str']].drop_duplicates().sort_values('month')
+    months_order = filtered_df[[ColumnNames.MONTH, 'month_Str']].drop_duplicates().sort_values(ColumnNames.MONTH)
     all_month_cols = months_order['month_Str'].tolist()
 
     if rollup:
         pivot_df = pd.pivot_table(
             filtered_df,
-            values='amount',
-            index='account_type',
+            values=ColumnNames.AMOUNT,
+            index=ColumnNames.ACCOUNT_TYPE,
             columns='month_Str',
             aggfunc='sum',
             fill_value=0
@@ -101,8 +102,8 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
     else:
         pivot_df = pd.pivot_table(
             filtered_df,
-            values='amount',
-            index=['account_type', 'category'],
+            values=ColumnNames.AMOUNT,
+            index=[ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY],
             columns='month_Str',
             aggfunc='sum',
             fill_value=0
@@ -133,7 +134,7 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
 
     # Add Grand Total row
     grand_total = pd.DataFrame([pivot_df[month_cols].sum().to_list()], columns=month_cols)
-    grand_total.insert(0, 'account_type', 'Grand Total')
+    grand_total.insert(0, ColumnNames.ACCOUNT_TYPE, 'Grand Total')
     pivot_df = pd.concat([pivot_df, grand_total], ignore_index=True)
 
     return pivot_df, month_cols
@@ -210,7 +211,7 @@ def export_to_excel(pivot_df):
     
     # Convert numeric columns
     for col in excel_df.columns:
-        if col not in ['account_type', 'category']:
+        if col not in [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY]:
             try:
                 excel_df[col] = pd.to_numeric(excel_df[col], errors='ignore')
             except:
@@ -255,7 +256,7 @@ def validate_data(filtered_df):
     Returns:
         tuple: (is_valid, error_message)
     """
-    required_cols = ['account_type', 'category', 'month_Str', 'amount', 'month']
+    required_cols = [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, 'month_Str', ColumnNames.AMOUNT, ColumnNames.MONTH]
     
     missing_cols = [col for col in required_cols if col not in filtered_df.columns]
     if missing_cols:
@@ -264,7 +265,7 @@ def validate_data(filtered_df):
     if filtered_df.empty:
         return False, "No data available for the selected filters."
     
-    if filtered_df['amount'].isna().all():
+    if filtered_df[ColumnNames.AMOUNT].isna().all():
         return False, "All amount values are missing."
     
     return True, ""
@@ -275,7 +276,7 @@ def show_pivot_table(filtered_df):
     Main function to display pivot table with KPIs, styling, Excel export, and optional transpose.
     
     Args:
-        filtered_df (pd.DataFrame): Filtered dataset with 'account_type', 'category', 'month_Str', and 'amount'.
+        filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, 'month_Str', and ColumnNames.AMOUNT.
     """
     st.header("Summarized Table")
     
@@ -318,9 +319,9 @@ def show_pivot_table(filtered_df):
 
     # Optional transpose
     if transpose_val:
-        styled_df = styled_df.rename(columns={'account_type':'month'}).set_index('month').T
+        styled_df = styled_df.rename(columns={ColumnNames.ACCOUNT_TYPE:ColumnNames.MONTH}).set_index(ColumnNames.MONTH).T
     else:
-        styled_df.set_index('account_type', inplace=True)
+        styled_df.set_index(ColumnNames.ACCOUNT_TYPE, inplace=True)
         
     # Excel export (clean numbers)
     export_to_excel(pivot_df)

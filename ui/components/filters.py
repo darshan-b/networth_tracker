@@ -274,7 +274,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             st.sidebar.error(" No expense data available.")
             return pd.DataFrame(), 1, 1
         
-        if 'date' not in df.columns:
+        if ColumnNames.DATE not in df.columns:
             st.sidebar.error(" Date information missing from expense data.")
             return pd.DataFrame(), 1, 1
         
@@ -289,7 +289,6 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         # Handle custom range with UI inputs
         if date_option == DATE_RANGE_CUSTOM:
             col_start, col_end = st.sidebar.columns(2)
-            
             with col_start:
                 start_date = st.date_input(
                     "Start date",
@@ -309,7 +308,9 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
                     key="expense_date_end",
                     help="Select the end date for filtering"
                 )
-            
+
+            start_date = pd.to_datetime(start_date)
+            end_date = pd.to_datetime(end_date)
             # Validate custom date range
             if start_date > end_date:
                 st.sidebar.warning(" Start date is after end date. Swapping dates.")

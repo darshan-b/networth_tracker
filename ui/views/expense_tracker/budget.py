@@ -6,6 +6,7 @@ Displays budget vs actual spending comparison and detailed budget progress track
 import streamlit as st
 import plotly.graph_objects as go
 from data.calculations import calculate_budget_comparison
+from constants import ColumnNames
 
 
 def render_budgets_tab(df, budgets, num_months=1):
@@ -81,14 +82,14 @@ def _render_budget_comparison_chart(budget_df):
         
         fig.add_trace(go.Bar(
             name='Budget', 
-            x=budget_df['category'], 
+            x=budget_df[ColumnNames.CATEGORY], 
             y=budget_df['Budget'], 
             marker_color='lightblue'
         ))
         
         fig.add_trace(go.Bar(
             name='Spent', 
-            x=budget_df['category'], 
+            x=budget_df[ColumnNames.CATEGORY], 
             y=budget_df['Spent'],
             marker_color='coral'
         ))
@@ -134,7 +135,7 @@ def _render_budget_card(category, monthly_budget, budget_df, num_months):
         num_months (int): Number of months in the selected period
     """
     # Get budget data for this category
-    category_data = budget_df[budget_df['category'] == category]
+    category_data = budget_df[budget_df[ColumnNames.CATEGORY] == category]
     
     if not category_data.empty:
         row = category_data.iloc[0]

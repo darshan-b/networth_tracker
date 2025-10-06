@@ -7,6 +7,7 @@ import io
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy import stats
+from constants import ColumnNames
 
 
 def round_to_k(amount):
@@ -36,12 +37,12 @@ def show_growth_over_time(filtered_df):
     # -------------------------
     st.subheader("Quick Stats")
     
-    totals_df = filtered_df.groupby(['month', 'month_Str'], as_index=False)['amount'].sum()
+    totals_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str'], as_index=False)[ColumnNames.AMOUNT].sum()
     
     if len(totals_df) >= 2:
-        current_nw = totals_df.iloc[-1]['amount']
-        previous_nw = totals_df.iloc[-2]['amount']
-        first_nw = totals_df.iloc[0]['amount']
+        current_nw = totals_df.iloc[-1][ColumnNames.AMOUNT]
+        previous_nw = totals_df.iloc[-2][ColumnNames.AMOUNT]
+        first_nw = totals_df.iloc[0][ColumnNames.AMOUNT]
         
         mom_change = current_nw - previous_nw
         mom_pct = (mom_change / abs(previous_nw)) * 100 if previous_nw != 0 else 0
@@ -54,7 +55,7 @@ def show_growth_over_time(filtered_df):
         
         # Calculate growth velocity
         if len(totals_df) >= 3:
-            prev_period_change = totals_df.iloc[-2]['amount'] - totals_df.iloc[-3]['amount']
+            prev_period_change = totals_df.iloc[-2][ColumnNames.AMOUNT] - totals_df.iloc[-3][ColumnNames.AMOUNT]
             velocity = mom_change - prev_period_change
             if velocity > 0:
                 velocity_text = "Accelerating"
@@ -66,8 +67,8 @@ def show_growth_over_time(filtered_df):
             velocity_text = "N/A"
         
         # Find best and worst months
-        best_idx = totals_df['amount'].idxmax()
-        worst_idx = totals_df['amount'].idxmin()
+        best_idx = totals_df[ColumnNames.AMOUNT].idxmax()
+        worst_idx = totals_df[ColumnNames.AMOUNT].idxmin()
         best_month = totals_df.loc[best_idx, 'month_Str']
         worst_month = totals_df.loc[worst_idx, 'month_Str']
         
@@ -96,7 +97,7 @@ def show_growth_over_time(filtered_df):
     col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
-        breakdown_by = st.selectbox("Breakdown By:", ["category", "account_type", "Both"], key="breakdown")
+        breakdown_by = st.selectbox("Breakdown By:", [ColumnNames.CATEGORY, ColumnNames.ACCOUNT_TYPE, "Both"], key="breakdown")
     
     with col2:
         view_preset = st.selectbox(
@@ -120,20 +121,20 @@ def show_growth_over_time(filtered_df):
     # -------------------------
     # Prepare data
     # -------------------------
-    if breakdown_by == "category":
-        agg_df = filtered_df.groupby(['month', 'month_Str', 'category'], as_index=False)['amount'].sum()
-        color_column = 'category'
-    elif breakdown_by == "account_type":
-        agg_df = filtered_df.groupby(['month', 'month_Str', 'account_type'], as_index=False)['amount'].sum()
-        color_column = 'account_type'
+    if breakdown_by == ColumnNames.CATEGORY:
+        agg_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str', ColumnNames.CATEGORY], as_index=False)[ColumnNames.AMOUNT].sum()
+        color_column = ColumnNames.CATEGORY
+    elif breakdown_by == ColumnNames.ACCOUNT_TYPE:
+        agg_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str', ColumnNames.ACCOUNT_TYPE], as_index=False)[ColumnNames.AMOUNT].sum()
+        color_column = ColumnNames.ACCOUNT_TYPE
     else:  # Both
         agg_df = filtered_df.copy()
-        agg_df['Group'] = agg_df['account_type'] + ' - ' + agg_df['category']
-        agg_df = agg_df.groupby(['month', 'month_Str', 'Group'], as_index=False)['amount'].sum()
+        agg_df['Group'] = agg_df[ColumnNames.ACCOUNT_TYPE] + ' - ' + agg_df[ColumnNames.CATEGORY]
+        agg_df = agg_df.groupby([ColumnNames.MONTH, 'month_Str', 'Group'], as_index=False)[ColumnNames.AMOUNT].sum()
         color_column = 'Group'
     
     # Calculate MoM % change
-    totals_df['MoM_Pct'] = totals_df['amount'].pct_change() * 100
+    totals_df['MoM_Pct'] = totals_df[ColumnNames.AMOUNT].pct_change() * 100
     totals_df['MoM_Pct_Text'] = totals_df['MoM_Pct'].apply(
         lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if pd.notna(x) else ""
     )
@@ -143,19 +144,19 @@ def show_growth_over_time(filtered_df):
     
     # Calculate rolling average
     if show_rolling_avg and len(totals_df) >= 3:
-        totals_df['Rolling_Avg'] = totals_df['amount'].rolling(window=3, min_periods=1).mean()
+        totals_df['Rolling_Avg'] = totals_df[ColumnNames.AMOUNT].rolling(window=3, min_periods=1).mean()
     
     # -------------------------
     # Create Chart
     # -------------------------
     fig = px.bar(
         agg_df,
-        x='month',
-        y='amount',
+        x=ColumnNames.MONTH,
+        y=ColumnNames.AMOUNT,
         color=color_column,
         text=None,
         barmode='stack',
-        hover_data={'month': False, 'amount': True, color_column: True},
+        hover_data={ColumnNames.MONTH: False, ColumnNames.AMOUNT: True, color_column: True},
         color_discrete_sequence=px.colors.qualitative.Set3
     )
     
@@ -163,8 +164,8 @@ def show_growth_over_time(filtered_df):
     if show_trend_line:
         fig.add_trace(
             go.Scatter(
-                x=totals_df['month'],
-                y=totals_df['amount'],
+                x=totals_df[ColumnNames.MONTH],
+                y=totals_df[ColumnNames.AMOUNT],
                 mode='lines+markers',
                 name='Total Net Worth',
                 line=dict(color='black', width=3),
@@ -178,7 +179,7 @@ def show_growth_over_time(filtered_df):
     if show_rolling_avg and len(totals_df) >= 3:
         fig.add_trace(
             go.Scatter(
-                x=totals_df['month'],
+                x=totals_df[ColumnNames.MONTH],
                 y=totals_df['Rolling_Avg'],
                 mode='lines',
                 name='3-month Average',
@@ -190,14 +191,14 @@ def show_growth_over_time(filtered_df):
     # Add milestone markers
     if show_milestones:
         milestones = [100000, 250000, 500000, 750000, 1000000, 1500000, 2000000]
-        min_nw = totals_df['amount'].min()
-        max_nw = totals_df['amount'].max()
+        min_nw = totals_df[ColumnNames.AMOUNT].min()
+        max_nw = totals_df[ColumnNames.AMOUNT].max()
         
         for milestone in milestones:
             if min_nw < milestone < max_nw:
-                crossed_idx = totals_df[totals_df['amount'] >= milestone].index[0]
-                crossed_date = totals_df.loc[crossed_idx, 'month']
-                crossed_amount = totals_df.loc[crossed_idx, 'amount']
+                crossed_idx = totals_df[totals_df[ColumnNames.AMOUNT] >= milestone].index[0]
+                crossed_date = totals_df.loc[crossed_idx, ColumnNames.MONTH]
+                crossed_amount = totals_df.loc[crossed_idx, ColumnNames.AMOUNT]
                 
                 fig.add_annotation(
                     x=crossed_date,
@@ -217,13 +218,13 @@ def show_growth_over_time(filtered_df):
     
     # Highlight extremes
     if highlight_extremes and len(totals_df) >= 2:
-        best_idx = totals_df['amount'].idxmax()
-        worst_idx = totals_df['amount'].idxmin()
+        best_idx = totals_df[ColumnNames.AMOUNT].idxmax()
+        worst_idx = totals_df[ColumnNames.AMOUNT].idxmin()
         
         fig.add_annotation(
-            x=totals_df.loc[best_idx, 'month'],
-            y=totals_df.loc[best_idx, 'amount'],
-            text=f"Best<br>${totals_df.loc[best_idx, 'amount']:,.0f}",
+            x=totals_df.loc[best_idx, ColumnNames.MONTH],
+            y=totals_df.loc[best_idx, ColumnNames.AMOUNT],
+            text=f"Best<br>${totals_df.loc[best_idx, ColumnNames.AMOUNT]:,.0f}",
             showarrow=True,
             arrowhead=2,
             ax=0,
@@ -233,9 +234,9 @@ def show_growth_over_time(filtered_df):
         )
         
         fig.add_annotation(
-            x=totals_df.loc[worst_idx, 'month'],
-            y=totals_df.loc[worst_idx, 'amount'],
-            text=f"Lowest<br>${totals_df.loc[worst_idx, 'amount']:,.0f}",
+            x=totals_df.loc[worst_idx, ColumnNames.MONTH],
+            y=totals_df.loc[worst_idx, ColumnNames.AMOUNT],
+            text=f"Lowest<br>${totals_df.loc[worst_idx, ColumnNames.AMOUNT]:,.0f}",
             showarrow=True,
             arrowhead=2,
             ax=0,
@@ -247,9 +248,9 @@ def show_growth_over_time(filtered_df):
     # Add total labels
     fig.add_trace(
         go.Scatter(
-            x=totals_df['month'],
-            y=totals_df['amount'],
-            text=totals_df['amount'].apply(lambda x: round_to_k(x)),
+            x=totals_df[ColumnNames.MONTH],
+            y=totals_df[ColumnNames.AMOUNT],
+            text=totals_df[ColumnNames.AMOUNT].apply(lambda x: round_to_k(x)),
             textposition='top center',
             mode='text',
             showlegend=False,
@@ -262,8 +263,8 @@ def show_growth_over_time(filtered_df):
     if show_mom_pct:
         fig.add_trace(
             go.Scatter(
-                x=totals_df['month'],
-                y=totals_df['amount'] * 1.15,
+                x=totals_df[ColumnNames.MONTH],
+                y=totals_df[ColumnNames.AMOUNT] * 1.15,
                 text=totals_df['MoM_Pct_Text'],
                 textposition='middle center',
                 mode='text',
@@ -277,9 +278,9 @@ def show_growth_over_time(filtered_df):
     fig.update_layout(
         title="Net Worth Over Time - Detailed View",
         xaxis=dict(
-            tickvals=totals_df['month'], 
+            tickvals=totals_df[ColumnNames.MONTH], 
             ticktext=totals_df['month_Str'], 
-            title='month', 
+            title=ColumnNames.MONTH, 
             tickangle=90
         ),
         yaxis=dict(title='amount ($)', tickprefix='$', tickformat=',.0f'),

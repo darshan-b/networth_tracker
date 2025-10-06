@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from constants import ColumnNames
 
 
 def calculate_months_to_goal(current_value, goal_amount, monthly_contribution, annual_return_rate, compound_freq='monthly'):
@@ -118,7 +119,7 @@ def generate_projection_data(current_value, goal_amount, monthly_contribution, a
         total_contributions += monthly_contribution
     
     return pd.DataFrame({
-        'month': months,
+        ColumnNames.MONTH: months,
         'Date': dates,
         'Balance': balances,
         'Contributions': contributions_cumulative,
@@ -204,17 +205,17 @@ def show_growth_projections(filtered_df):
     st.header("Growth Projections & Goal Planning")
     
     # Calculate current net worth
-    totals_df = filtered_df.groupby(['month', 'month_Str'], as_index=False)['amount'].sum()
+    totals_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str'], as_index=False)[ColumnNames.AMOUNT].sum()
     
     if totals_df.empty:
         st.warning("No data available. Please adjust your filters.")
         return
     
-    current_nw = totals_df.iloc[-1]['amount']
+    current_nw = totals_df.iloc[-1][ColumnNames.AMOUNT]
     
     # Calculate historical metrics
     if len(totals_df) >= 2:
-        first_nw = totals_df.iloc[0]['amount']
+        first_nw = totals_df.iloc[0][ColumnNames.AMOUNT]
         total_change = current_nw - first_nw
         avg_monthly_growth = total_change / len(totals_df) if len(totals_df) > 0 else 0
         
@@ -360,7 +361,7 @@ def show_growth_projections(filtered_df):
        # Sample key milestones
         if len(projection_df) > 12:
             # Show quarterly snapshots
-            milestone_rows = projection_df[projection_df['month'] % 3 == 0].copy()
+            milestone_rows = projection_df[projection_df[ColumnNames.MONTH] % 3 == 0].copy()
         else:
             milestone_rows = projection_df.copy()
         

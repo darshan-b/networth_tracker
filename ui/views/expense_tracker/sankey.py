@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import json
 import streamlit.components.v1 as components
+from constants import ColumnNames
 
 
 # Color scheme for categories
@@ -68,7 +69,7 @@ def _generate_sankey_data(df):
     node_map = {}
     
     # Calculate total expenses (use absolute value)
-    total_expenses = abs(df['amount'].sum())
+    total_expenses = abs(df[ColumnNames.AMOUNT].sum())
     
     # Add total node
     nodes.append({
@@ -81,7 +82,7 @@ def _generate_sankey_data(df):
     
     # Group by category
     category_totals = (
-        df.groupby('category')['amount']
+        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .apply(lambda x: abs(x.sum()))
         .sort_values(ascending=False)
     )
@@ -135,17 +136,17 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     Returns:
         int: Updated node index
     """
-    category_df = df[df['category'] == category]
+    category_df = df[df[ColumnNames.CATEGORY] == category]
     subcategory_df = category_df[
-        category_df['subcategory'].notna() & 
-        (category_df['subcategory'] != '')
+        category_df[ColumnNames.SUBCATEGORY].notna() & 
+        (category_df[ColumnNames.SUBCATEGORY] != '')
     ]
     
     if subcategory_df.empty:
         return node_idx
     
     subcategory_totals = (
-        subcategory_df.groupby('subcategory')['amount']
+        subcategory_df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
         .apply(lambda x: abs(x.sum()))
         .sort_values(ascending=False)
     )
@@ -298,19 +299,19 @@ def _render_sankey_summary(df):
     """
     col1, col2, col3, col4 = st.columns(4)
     
-    total_expenses = abs(df['amount'].sum())
+    total_expenses = abs(df[ColumnNames.AMOUNT].sum())
     
     with col1:
         st.metric("Total Expenses", f"${total_expenses:,.2f}")
     
     with col2:
-        num_categories = df['category'].nunique()
+        num_categories = df[ColumnNames.CATEGORY].nunique()
         st.metric("Categories", num_categories)
     
     with col3:
         if not df.empty:
             category_totals = (
-                df.groupby('category')['amount']
+                df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
                 .apply(lambda x: abs(x.sum()))
                 .sort_values(ascending=False)
             )
@@ -322,5 +323,5 @@ def _render_sankey_summary(df):
                 st.caption(f"${largest_amount:,.2f}")
     
     with col4:
-        avg_transaction = abs(df['amount'].mean())
+        avg_transaction = abs(df[ColumnNames.AMOUNT].mean())
         st.metric("Avg Transaction", f"${avg_transaction:,.2f}")

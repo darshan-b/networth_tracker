@@ -11,6 +11,7 @@ from data.calculations import (
     calculate_spending_by_dow,
     calculate_category_trends
 )
+from constants import ColumnNames
 
 
 def render_insights_tab(df):
@@ -72,10 +73,10 @@ def _render_top_merchants(df):
         
         fig = px.bar(
             top_merchants, 
-            x='amount', 
-            y='merchant', 
+            x=ColumnNames.AMOUNT, 
+            y=ColumnNames.MERCHANT, 
             orientation='h',
-            color='amount',
+            color=ColumnNames.AMOUNT,
             color_continuous_scale='Reds'
         )
         fig.update_layout(
@@ -108,8 +109,8 @@ def _render_dow_spending(df):
         fig = px.bar(
             dow_spending, 
             x='day_of_week', 
-            y='amount',
-            color='amount',
+            y=ColumnNames.AMOUNT,
+            color=ColumnNames.AMOUNT,
             color_continuous_scale='Greens'
         )
         fig.update_layout(
@@ -130,11 +131,11 @@ def _render_avg_transaction_by_category(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Average Transaction by category")
+    st.markdown("#### Average Transaction by Category")
     
     try:
         avg_by_category = (
-            df.groupby('category')['amount']
+            df.groupby(ColumnNames.DATE)[ColumnNames.AMOUNT]
             .apply(lambda x: abs(x.mean()))
             .sort_values(ascending=False)
             .reset_index()
@@ -146,9 +147,9 @@ def _render_avg_transaction_by_category(df):
         
         fig = px.bar(
             avg_by_category, 
-            x='category', 
-            y='amount',
-            color='amount',
+            x=ColumnNames.DATE, 
+            y=ColumnNames.AMOUNT,
+            color=ColumnNames.AMOUNT,
             color_continuous_scale='Purples'
         )
         fig.update_layout(
@@ -173,28 +174,28 @@ def _render_summary_statistics(df):
     
     with col1:
         st.metric("Total Transactions", len(df))
-        avg_amount = abs(df['amount'].mean())
+        avg_amount = abs(df[ColumnNames.AMOUNT].mean())
         st.metric("Average Transaction", f"${avg_amount:.2f}")
     
     with col2:
-        largest_amount = abs(df['amount'].min())
+        largest_amount = abs(df[ColumnNames.AMOUNT].min())
         st.metric("Largest Transaction", f"${largest_amount:.2f}")
         
         if not df.empty:
             try:
-                largest = df.loc[df['amount'].idxmin()]
-                st.caption(f"{largest['merchant']} - {largest['category']}")
+                largest = df.loc[df[ColumnNames.AMOUNT].idxmin()]
+                st.caption(f"{largest[ColumnNames.MERCHANT]} - {largest[ColumnNames.CATEGORY]}")
             except Exception:
                 pass
     
     with col3:
         if not df.empty:
             try:
-                most_frequent_merchant = df['merchant'].mode()[0]
+                most_frequent_merchant = df[ColumnNames.MERCHANT].mode()[0]
                 st.metric("Most Frequent Merchant", most_frequent_merchant)
                 
-                most_frequent_category = df['category'].mode()[0]
-                st.metric("Most Frequent category", most_frequent_category)
+                most_frequent_category = df[ColumnNames.CATEGORY].mode()[0]
+                st.metric("Most Frequent Category", most_frequent_category)
             except Exception:
                 st.info("Insufficient data for frequency analysis.")
 
@@ -206,7 +207,7 @@ def _render_category_trends(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### category Spending Over Time")
+    st.markdown("#### Category Spending Over Time")
     
     try:
         category_monthly = calculate_category_trends(df)
@@ -217,9 +218,9 @@ def _render_category_trends(df):
         
         fig = px.line(
             category_monthly, 
-            x='month', 
-            y='amount', 
-            color='category',
+            x=ColumnNames.MONTH, 
+            y=ColumnNames.AMOUNT, 
+            color=ColumnNames.CATEGORY,
             markers=True
         )
         fig.update_layout(

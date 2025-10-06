@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 from typing import List, Optional, Tuple
+from constants import ColumnNames
 
 
 def validate_dataframe(
@@ -96,7 +97,7 @@ def validate_positive_integer(value: int, param_name: str = "parameter") -> bool
 
 def validate_date_range(
     df: pd.DataFrame,
-    date_column: str = 'date',
+    date_column: str = ColumnNames.DATE,
     min_periods: int = 2
 ) -> Tuple[bool, str]:
     """
