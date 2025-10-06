@@ -225,7 +225,6 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     return node_idx
 
-
 def _render_sankey_diagram(data):
     """
     Render an enhanced D3.js-based Sankey diagram with improved interactivity and styling.
@@ -357,86 +356,17 @@ def _render_sankey_diagram(data):
                     font-weight: 500;
                     margin-left: 12px;
                 }}
-                .controls {{
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    margin-bottom: 20px;
-                    padding: 12px 16px;
-                    background: #f5f5f5;
-                    border-radius: 8px;
-                }}
-                .toggle-label {{
-                    font-size: 14px;
-                    font-weight: 500;
-                    color: #333;
-                }}
-                .switch {{
-                    position: relative;
-                    display: inline-block;
-                    width: 50px;
-                    height: 26px;
-                }}
-                .switch input {{
-                    opacity: 0;
-                    width: 0;
-                    height: 0;
-                }}
-                .slider {{
-                    position: absolute;
-                    cursor: pointer;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    bottom: 0;
-                    background-color: #ccc;
-                    transition: .3s;
-                    border-radius: 26px;
-                }}
-                .slider:before {{
-                    position: absolute;
-                    content: "";
-                    height: 18px;
-                    width: 18px;
-                    left: 4px;
-                    bottom: 4px;
-                    background-color: white;
-                    transition: .3s;
-                    border-radius: 50%;
-                }}
-                input:checked + .slider {{
-                    background-color: #2196F3;
-                }}
-                input:checked + .slider:before {{
-                    transform: translateX(24px);
-                }}
-                .level-text {{
-                    font-size: 13px;
-                    color: #666;
-                    min-width: 80px;
-                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="title">Cash Flow Visualization</div>
                 <div class="subtitle">Click on nodes or links to highlight connections • Click background to deselect</div>
-                <div class="controls">
-                    <span class="toggle-label">Detail Level:</span>
-                    <span class="level-text" id="level-text">Category</span>
-                    <label class="switch">
-                        <input type="checkbox" id="detail-toggle">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="level-text">Subcategory</span>
-                </div>
                 <svg id="chart"></svg>
                 <div class="tooltip" id="tooltip"></div>
             </div>
             <script>
-                const originalData = {json.dumps(data)};
-                let currentData = JSON.parse(JSON.stringify(originalData));
-                let showSubcategory = false;
+                const data = {json.dumps(data)};
                 
                 const containerWidth = document.querySelector('.container').clientWidth - 48;
                 const width = Math.max(1200, containerWidth);
@@ -463,53 +393,7 @@ def _render_sankey_diagram(data):
                     tooltip.classed("visible", false);
                 }}
                 
-                function aggregateToCategory(data) {{
-                    const categoryMap = new Map();
-                    const nodeIndexMap = new Map();
-                    
-                    data.nodes.forEach(node => {{
-                        const category = node.category || node.name;
-                        if (!categoryMap.has(category)) {{
-                            categoryMap.set(category, {{
-                                name: category,
-                                displayName: category,
-                                color: node.color,
-                                category: category
-                            }});
-                        }}
-                        nodeIndexMap.set(node.name, category);
-                    }});
-                    
-                    const linkMap = new Map();
-                    data.links.forEach(link => {{
-                        const sourceCat = nodeIndexMap.get(data.nodes[link.source].name);
-                        const targetCat = nodeIndexMap.get(data.nodes[link.target].name);
-                        const key = sourceCat + '-' + targetCat;
-                        
-                        if (!linkMap.has(key)) {{
-                            linkMap.set(key, {{
-                                source: sourceCat,
-                                target: targetCat,
-                                value: 0
-                            }});
-                        }}
-                        linkMap.get(key).value += link.value;
-                    }});
-                    
-                    const newNodes = Array.from(categoryMap.values());
-                    const nodeNameToIndex = new Map();
-                    newNodes.forEach((node, i) => nodeNameToIndex.set(node.name, i));
-                    
-                    const newLinks = Array.from(linkMap.values()).map(link => ({{
-                        source: nodeNameToIndex.get(link.source),
-                        target: nodeNameToIndex.get(link.target),
-                        value: link.value
-                    }}));
-                    
-                    return {{ nodes: newNodes, links: newLinks }};
-                }}
-                
-                function renderSankey(data) {{
+                function renderSankey() {{
                     d3.select("#chart").selectAll("*").remove();
                     
                     const svg = d3.select("#chart")
@@ -715,25 +599,13 @@ def _render_sankey_diagram(data):
                         }});
                 }}
                 
-                document.getElementById('detail-toggle').addEventListener('change', function() {{
-                    showSubcategory = this.checked;
-                    
-                    if (showSubcategory) {{
-                        currentData = JSON.parse(JSON.stringify(originalData));
-                    }} else {{
-                        currentData = aggregateToCategory(originalData);
-                    }}
-                    
-                    renderSankey(currentData);
-                }});
-                
-                renderSankey(currentData);
+                renderSankey();
             </script>
         </body>
         </html>
         """
     
-    components.html(html_content, height=1000, scrolling=False)
+    components.html(html_content, height=1000, scrolling=True)
 
 
 def _render_sankey_summary(df):
