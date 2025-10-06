@@ -234,379 +234,504 @@ def _render_sankey_diagram(data):
         data (dict): Sankey data containing nodes and links
     """
     html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <script src="https://d3js.org/d3.v7.min.js"></script>
-        <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
-        <style>
-            * {{
-                box-sizing: border-box;
-            }}
-            body {{
-                margin: 0;
-                padding: 20px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                background: #fafafa;
-            }}
-            .container {{
-                background: white;
-                border-radius: 12px;
-                padding: 24px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            }}
-            #chart {{ 
-                background: white;
-                width: 100%;
-                height: auto;
-            }}
-            .node rect {{
-                stroke: #fff;
-                stroke-width: 2px;
-                cursor: pointer;
-                transition: opacity 0.2s ease;
-            }}
-            .node rect:hover {{ 
-                opacity: 0.85;
-                stroke-width: 3px;
-            }}
-            .link {{
-                fill: none;
-                stroke-opacity: 0.3;
-                transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
-                mix-blend-mode: multiply;
-            }}
-            .link:hover {{ 
-                stroke-opacity: 0.7;
-                mix-blend-mode: normal;
-            }}
-            .link.highlighted {{
-                stroke-opacity: 0.75;
-                stroke-width: 2px;
-                mix-blend-mode: normal;
-            }}
-            .link.dimmed {{
-                stroke-opacity: 0.08;
-            }}
-            .node-label {{
-                font-size: 13px;
-                font-weight: 500;
-                pointer-events: none;
-                line-height: 1.4;
-            }}
-            .node-value {{
-                font-size: 11px;
-                color: #666;
-                font-weight: 400;
-            }}
-            .title {{
-                font-size: 26px;
-                font-weight: 600;
-                margin-bottom: 8px;
-                color: #1a1a1a;
-            }}
-            .subtitle {{
-                font-size: 14px;
-                color: #666;
-                margin-bottom: 24px;
-            }}
-            .tooltip {{
-                position: absolute;
-                padding: 12px 16px;
-                background: rgba(0, 0, 0, 0.9);
-                color: white;
-                border-radius: 6px;
-                font-size: 13px;
-                pointer-events: none;
-                opacity: 0;
-                transition: opacity 0.2s ease;
-                z-index: 1000;
-                max-width: 280px;
-                line-height: 1.5;
-            }}
-            .tooltip.visible {{
-                opacity: 1;
-            }}
-            .tooltip-header {{
-                font-weight: 600;
-                margin-bottom: 6px;
-                font-size: 14px;
-            }}
-            .tooltip-row {{
-                display: flex;
-                justify-content: space-between;
-                margin: 4px 0;
-            }}
-            .tooltip-label {{
-                color: #ccc;
-            }}
-            .tooltip-value {{
-                font-weight: 500;
-                margin-left: 12px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="title">Cash Flow Visualization</div>
-            <div class="subtitle">Click on nodes or links to highlight connections • Click background to deselect</div>
-            <svg id="chart"></svg>
-            <div class="tooltip" id="tooltip"></div>
-        </div>
-        <script>
-            const data = {json.dumps(data)};
-            
-            // Responsive dimensions
-            const containerWidth = document.querySelector('.container').clientWidth - 48;
-            const width = Math.max(1200, containerWidth);
-            const height = 900;
-            
-            const svg = d3.select("#chart")
-                .attr("width", width)
-                .attr("height", height)
-                .attr("viewBox", [0, 0, width, height])
-                .attr("preserveAspectRatio", "xMidYMid meet")
-                .on("click", function() {{
-                    // Deselect when clicking on background
-                    selectedNode = null;
-                    selectedLink = null;
-                    link.classed("highlighted", false).classed("dimmed", false);
-                    node.classed("selected", false).classed("dimmed", false);
-                    hideTooltip();
-                }});
-            
-            // Add gradient definitions for links
-            const defs = svg.append("defs");
-            
-            const sankey = d3.sankey()
-                .nodeId(d => d.index)
-                .nodeWidth(40)
-                .nodePadding(35)
-                .nodeAlign(d3.sankeyJustify)
-                .nodeSort((a, b) => a.y0 - b.y0)
-                .linkSort((a, b) => a.source.y0 - b.source.y0)
-                .iterations(50)
-                .extent([[50, 50], [width - 50, height - 50]]);
-            
-            data.nodes.forEach((node, i) => node.index = i);
-            
-            const graph = sankey(data);
-            
-            // Track selected element
-            let selectedNode = null;
-            let selectedLink = null;
-            
-            // Calculate totals for percentages
-            const totalFlow = d3.sum(graph.links, d => d.value);
-            
-            // Enhanced tooltip
-            const tooltip = d3.select("#tooltip");
-            
-            function showTooltip(content, event) {{
-                tooltip
-                    .html(content)
-                    .classed("visible", true)
-                    .style("left", (event.pageX + 15) + "px")
-                    .style("top", (event.pageY - 15) + "px");
-            }}
-            
-            function hideTooltip() {{
-                tooltip.classed("visible", false);
-            }}
-            
-            function formatCurrency(value) {{
-                return '$' + value.toLocaleString('en-US', {{ 
-                    minimumFractionDigits: 2, 
-                    maximumFractionDigits: 2 
-                }});
-            }}
-            
-            function formatPercent(value) {{
-                return ((value / totalFlow) * 100).toFixed(1) + '%';
-            }}
-            
-            // Add links with enhanced interactivity
-            const link = svg.append("g")
-                .attr("class", "links")
-                .selectAll("path")
-                .data(graph.links)
-                .join("path")
-                .attr("class", "link")
-                .attr("d", d3.sankeyLinkHorizontal())
-                .attr("stroke", d => {{
-                    const gradientId = `gradient-${{d.source.index}}-${{d.target.index}}`;
-                    const gradient = defs.append("linearGradient")
-                        .attr("id", gradientId)
-                        .attr("gradientUnits", "userSpaceOnUse")
-                        .attr("x1", d.source.x1)
-                        .attr("x2", d.target.x0);
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script src="https://d3js.org/d3.v7.min.js"></script>
+            <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+            <style>
+                * {{
+                    box-sizing: border-box;
+                }}
+                body {{
+                    margin: 0;
+                    padding: 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                    background: #fafafa;
+                }}
+                .container {{
+                    background: white;
+                    border-radius: 12px;
+                    padding: 24px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                }}
+                #chart {{ 
+                    background: white;
+                    width: 100%;
+                    height: auto;
+                }}
+                .node rect {{
+                    stroke: #fff;
+                    stroke-width: 2px;
+                    cursor: pointer;
+                    transition: opacity 0.2s ease, stroke-width 0.2s ease;
+                }}
+                .node rect:hover {{ 
+                    opacity: 0.85;
+                }}
+                .node.selected rect {{
+                    stroke-width: 4px;
+                    stroke: #333;
+                }}
+                .node.dimmed {{
+                    filter: blur(1.5px);
+                }}
+                .node.dimmed rect {{
+                    opacity: 0.3;
+                }}
+                .node.dimmed foreignObject {{
+                    filter: blur(1.5px);
+                    opacity: 0.3;
+                }}
+                .link {{
+                    fill: none;
+                    stroke-opacity: 0.3;
+                    transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
+                    mix-blend-mode: multiply;
+                    cursor: pointer;
+                }}
+                .link:hover {{ 
+                    stroke-opacity: 0.5;
+                }}
+                .link.highlighted {{
+                    stroke-opacity: 0.85;
+                    mix-blend-mode: normal;
+                }}
+                .link.dimmed {{
+                    stroke-opacity: 0.15;
+                    filter: blur(2px);
+                }}
+                .node-label {{
+                    font-size: 13px;
+                    font-weight: 500;
+                    pointer-events: none;
+                    line-height: 1.4;
+                }}
+                .node-value {{
+                    font-size: 11px;
+                    color: #666;
+                    font-weight: 400;
+                }}
+                .title {{
+                    font-size: 26px;
+                    font-weight: 600;
+                    margin-bottom: 8px;
+                    color: #1a1a1a;
+                }}
+                .subtitle {{
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 24px;
+                }}
+                .tooltip {{
+                    position: absolute;
+                    padding: 12px 16px;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: white;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    pointer-events: none;
+                    opacity: 0;
+                    transition: opacity 0.2s ease;
+                    z-index: 1000;
+                    max-width: 280px;
+                    line-height: 1.5;
+                }}
+                .tooltip.visible {{
+                    opacity: 1;
+                }}
+                .tooltip-header {{
+                    font-weight: 600;
+                    margin-bottom: 6px;
+                    font-size: 14px;
+                }}
+                .tooltip-row {{
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 4px 0;
+                }}
+                .tooltip-label {{
+                    color: #ccc;
+                }}
+                .tooltip-value {{
+                    font-weight: 500;
+                    margin-left: 12px;
+                }}
+                .controls {{
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                    padding: 12px 16px;
+                    background: #f5f5f5;
+                    border-radius: 8px;
+                }}
+                .toggle-label {{
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: #333;
+                }}
+                .switch {{
+                    position: relative;
+                    display: inline-block;
+                    width: 50px;
+                    height: 26px;
+                }}
+                .switch input {{
+                    opacity: 0;
+                    width: 0;
+                    height: 0;
+                }}
+                .slider {{
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background-color: #ccc;
+                    transition: .3s;
+                    border-radius: 26px;
+                }}
+                .slider:before {{
+                    position: absolute;
+                    content: "";
+                    height: 18px;
+                    width: 18px;
+                    left: 4px;
+                    bottom: 4px;
+                    background-color: white;
+                    transition: .3s;
+                    border-radius: 50%;
+                }}
+                input:checked + .slider {{
+                    background-color: #2196F3;
+                }}
+                input:checked + .slider:before {{
+                    transform: translateX(24px);
+                }}
+                .level-text {{
+                    font-size: 13px;
+                    color: #666;
+                    min-width: 80px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="title">Cash Flow Visualization</div>
+                <div class="subtitle">Click on nodes or links to highlight connections • Click background to deselect</div>
+                <div class="controls">
+                    <span class="toggle-label">Detail Level:</span>
+                    <span class="level-text" id="level-text">Category</span>
+                    <label class="switch">
+                        <input type="checkbox" id="detail-toggle">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="level-text">Subcategory</span>
+                </div>
+                <svg id="chart"></svg>
+                <div class="tooltip" id="tooltip"></div>
+            </div>
+            <script>
+                const originalData = {json.dumps(data)};
+                let currentData = JSON.parse(JSON.stringify(originalData));
+                let showSubcategory = false;
+                
+                const containerWidth = document.querySelector('.container').clientWidth - 48;
+                const width = Math.max(1200, containerWidth);
+                const height = 900;
+                
+                const tooltip = d3.select("#tooltip");
+                
+                function formatCurrency(value) {{
+                    return '$' + value.toLocaleString('en-US', {{ 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                    }});
+                }}
+                
+                function showTooltip(content, event) {{
+                    tooltip
+                        .html(content)
+                        .classed("visible", true)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 15) + "px");
+                }}
+                
+                function hideTooltip() {{
+                    tooltip.classed("visible", false);
+                }}
+                
+                function aggregateToCategory(data) {{
+                    const categoryMap = new Map();
+                    const nodeIndexMap = new Map();
                     
-                    gradient.append("stop")
-                        .attr("offset", "0%")
-                        .attr("stop-color", d.source.color || '#999');
+                    data.nodes.forEach(node => {{
+                        const category = node.category || node.name;
+                        if (!categoryMap.has(category)) {{
+                            categoryMap.set(category, {{
+                                name: category,
+                                displayName: category,
+                                color: node.color,
+                                category: category
+                            }});
+                        }}
+                        nodeIndexMap.set(node.name, category);
+                    }});
                     
-                    gradient.append("stop")
-                        .attr("offset", "100%")
-                        .attr("stop-color", d.target.color || '#999');
-                    
-                    return `url(#${{gradientId}})`;
-                }})
-                .attr("stroke-width", d => Math.max(2, d.width))
-                .on("click", function(event, d) {{
-                    event.stopPropagation();
-                    
-                    // Clear previous selections
-                    link.classed("highlighted", false);
-                    node.classed("selected", false);
-                    
-                    // Toggle selection
-                    if (selectedLink === d) {{
-                        selectedLink = null;
-                        link.classed("dimmed", false);
-                        node.classed("dimmed", false);
-                    }} else {{
-                        selectedLink = d;
-                        selectedNode = null;
-                        d3.select(this).classed("highlighted", true);
-                        link.filter(l => l !== d).classed("dimmed", true);
+                    const linkMap = new Map();
+                    data.links.forEach(link => {{
+                        const sourceCat = nodeIndexMap.get(data.nodes[link.source].name);
+                        const targetCat = nodeIndexMap.get(data.nodes[link.target].name);
+                        const key = sourceCat + '-' + targetCat;
                         
-                        // Dim nodes not connected to this link
-                        node.classed("dimmed", n => n !== d.source && n !== d.target);
-                    }}
-                }})
-                .on("mouseover", function(event, d) {{
-                    if (!selectedLink && !selectedNode) {{
-                        const tooltipContent = `
-                            <div class="tooltip-header">${{d.source.name}} → ${{d.target.name}}</div>
-                            <div class="tooltip-row">
-                                <span class="tooltip-label">Amount:</span>
-                                <span class="tooltip-value">${{formatCurrency(d.value)}}</span>
-                            </div>
-                            <div class="tooltip-row">
-                                <span class="tooltip-label">Percentage:</span>
-                                <span class="tooltip-value">${{formatPercent(d.value)}}</span>
-                            </div>
-                        `;
-                        showTooltip(tooltipContent, event);
-                    }}
-                }})
-                .on("mousemove", function(event) {{
-                    if (!selectedLink && !selectedNode) {{
-                        tooltip
-                            .style("left", (event.pageX + 15) + "px")
-                            .style("top", (event.pageY - 15) + "px");
-                    }}
-                }})
-                .on("mouseout", function() {{
-                    if (!selectedLink && !selectedNode) {{
-                        hideTooltip();
-                    }}
-                }});
-            
-            // Add nodes
-            const node = svg.append("g")
-                .attr("class", "nodes")
-                .selectAll("g")
-                .data(graph.nodes)
-                .join("g")
-                .attr("class", "node");
-            
-            node.append("rect")
-                .attr("x", d => d.x0)
-                .attr("y", d => d.y0)
-                .attr("height", d => d.y1 - d.y0)
-                .attr("width", d => d.x1 - d.x0)
-                .attr("fill", d => d.color || '#69b3a2')
-                .on("click", function(event, d) {{
-                    event.stopPropagation();
+                        if (!linkMap.has(key)) {{
+                            linkMap.set(key, {{
+                                source: sourceCat,
+                                target: targetCat,
+                                value: 0
+                            }});
+                        }}
+                        linkMap.get(key).value += link.value;
+                    }});
                     
-                    // Clear previous selections
-                    link.classed("highlighted", false).classed("dimmed", false);
-                    node.classed("selected", false).classed("dimmed", false);
+                    const newNodes = Array.from(categoryMap.values());
+                    const nodeNameToIndex = new Map();
+                    newNodes.forEach((node, i) => nodeNameToIndex.set(node.name, i));
                     
-                    // Toggle selection
-                    if (selectedNode === d) {{
-                        selectedNode = null;
-                        link.classed("dimmed", false);
-                        node.classed("dimmed", false);
-                    }} else {{
-                        selectedNode = d;
-                        selectedLink = null;
-                        d3.select(this.parentNode).classed("selected", true);
-                        
-                        // Highlight connected links and dim others
-                        link.classed("dimmed", true);
-                        link.filter(l => l.source === d || l.target === d)
-                            .classed("dimmed", false)
-                            .classed("highlighted", true);
-                        
-                        // Dim unconnected nodes
-                        const connectedNodes = new Set();
-                        connectedNodes.add(d);
-                        graph.links.forEach(l => {{
-                            if (l.source === d || l.target === d) {{
-                                connectedNodes.add(l.source);
-                                connectedNodes.add(l.target);
+                    const newLinks = Array.from(linkMap.values()).map(link => ({{
+                        source: nodeNameToIndex.get(link.source),
+                        target: nodeNameToIndex.get(link.target),
+                        value: link.value
+                    }}));
+                    
+                    return {{ nodes: newNodes, links: newLinks }};
+                }}
+                
+                function renderSankey(data) {{
+                    d3.select("#chart").selectAll("*").remove();
+                    
+                    const svg = d3.select("#chart")
+                        .attr("width", width)
+                        .attr("height", height)
+                        .attr("viewBox", [0, 0, width, height])
+                        .attr("preserveAspectRatio", "xMidYMid meet")
+                        .on("click", function() {{
+                            selectedNode = null;
+                            selectedLink = null;
+                            link.classed("highlighted", false).classed("dimmed", false);
+                            node.classed("selected", false).classed("dimmed", false);
+                            hideTooltip();
+                        }});
+                    
+                    const defs = svg.append("defs");
+                    
+                    const sankey = d3.sankey()
+                        .nodeId(d => d.index)
+                        .nodeWidth(40)
+                        .nodePadding(50)
+                        .nodeAlign(d3.sankeyJustify)
+                        .nodeSort((a, b) => a.y0 - b.y0)
+                        .linkSort((a, b) => a.source.y0 - b.source.y0)
+                        .iterations(50)
+                        .extent([[50, 50], [width - 50, height - 50]]);
+                    
+                    data.nodes.forEach((node, i) => node.index = i);
+                    
+                    const graph = sankey(data);
+                    
+                    let selectedNode = null;
+                    let selectedLink = null;
+                    
+                    const totalFlow = d3.sum(graph.links, d => d.value);
+                    
+                    function formatPercent(value) {{
+                        return ((value / totalFlow) * 100).toFixed(1) + '%';
+                    }}
+                    
+                    const link = svg.append("g")
+                        .attr("class", "links")
+                        .selectAll("path")
+                        .data(graph.links)
+                        .join("path")
+                        .attr("class", "link")
+                        .attr("d", d3.sankeyLinkHorizontal())
+                        .attr("stroke", d => {{
+                            const gradientId = 'gradient-' + d.source.index + '-' + d.target.index;
+                            const gradient = defs.append("linearGradient")
+                                .attr("id", gradientId)
+                                .attr("gradientUnits", "userSpaceOnUse")
+                                .attr("x1", d.source.x1)
+                                .attr("x2", d.target.x0);
+                            
+                            gradient.append("stop")
+                                .attr("offset", "0%")
+                                .attr("stop-color", d.source.color || '#999');
+                            
+                            gradient.append("stop")
+                                .attr("offset", "100%")
+                                .attr("stop-color", d.target.color || '#999');
+                            
+                            return 'url(#' + gradientId + ')';
+                        }})
+                        .attr("stroke-width", d => Math.max(2, d.width))
+                        .on("click", function(event, d) {{
+                            event.stopPropagation();
+                            
+                            link.classed("highlighted", false);
+                            node.classed("selected", false);
+                            
+                            if (selectedLink === d) {{
+                                selectedLink = null;
+                                link.classed("dimmed", false);
+                                node.classed("dimmed", false);
+                            }} else {{
+                                selectedLink = d;
+                                selectedNode = null;
+                                d3.select(this).classed("highlighted", true);
+                                link.filter(l => l !== d).classed("dimmed", true);
+                                node.classed("dimmed", n => n !== d.source && n !== d.target);
+                            }}
+                        }})
+                        .on("mouseover", function(event, d) {{
+                            if (!selectedLink && !selectedNode) {{
+                                const tooltipContent = 
+                                    '<div class="tooltip-header">' + d.source.name + ' → ' + d.target.name + '</div>' +
+                                    '<div class="tooltip-row">' +
+                                        '<span class="tooltip-label">Amount:</span>' +
+                                        '<span class="tooltip-value">' + formatCurrency(d.value) + '</span>' +
+                                    '</div>' +
+                                    '<div class="tooltip-row">' +
+                                        '<span class="tooltip-label">Percentage:</span>' +
+                                        '<span class="tooltip-value">' + formatPercent(d.value) + '</span>' +
+                                    '</div>';
+                                showTooltip(tooltipContent, event);
+                            }}
+                        }})
+                        .on("mousemove", function(event) {{
+                            if (!selectedLink && !selectedNode) {{
+                                tooltip
+                                    .style("left", (event.pageX + 15) + "px")
+                                    .style("top", (event.pageY - 15) + "px");
+                            }}
+                        }})
+                        .on("mouseout", function() {{
+                            if (!selectedLink && !selectedNode) {{
+                                hideTooltip();
                             }}
                         }});
-                        node.classed("dimmed", n => !connectedNodes.has(n));
+                    
+                    const node = svg.append("g")
+                        .attr("class", "nodes")
+                        .selectAll("g")
+                        .data(graph.nodes)
+                        .join("g")
+                        .attr("class", "node");
+                    
+                    node.append("rect")
+                        .attr("x", d => d.x0)
+                        .attr("y", d => d.y0)
+                        .attr("height", d => d.y1 - d.y0)
+                        .attr("width", d => d.x1 - d.x0)
+                        .attr("fill", d => d.color || '#69b3a2')
+                        .on("click", function(event, d) {{
+                            event.stopPropagation();
+                            
+                            link.classed("highlighted", false).classed("dimmed", false);
+                            node.classed("selected", false).classed("dimmed", false);
+                            
+                            if (selectedNode === d) {{
+                                selectedNode = null;
+                                link.classed("dimmed", false);
+                                node.classed("dimmed", false);
+                            }} else {{
+                                selectedNode = d;
+                                selectedLink = null;
+                                d3.select(this.parentNode).classed("selected", true);
+                                
+                                link.classed("dimmed", true);
+                                link.filter(l => l.source === d || l.target === d)
+                                    .classed("dimmed", false)
+                                    .classed("highlighted", true);
+                                
+                                const connectedNodes = new Set();
+                                connectedNodes.add(d);
+                                graph.links.forEach(l => {{
+                                    if (l.source === d || l.target === d) {{
+                                        connectedNodes.add(l.source);
+                                        connectedNodes.add(l.target);
+                                    }}
+                                }});
+                                node.classed("dimmed", n => !connectedNodes.has(n));
+                            }}
+                        }})
+                        .on("mouseover", function(event, d) {{
+                            if (!selectedNode && !selectedLink) {{
+                                const nodeValue = d3.sum(graph.links.filter(l => 
+                                    l.source === d || l.target === d
+                                ), l => l.value);
+                                
+                                const tooltipContent = 
+                                    '<div class="tooltip-header">' + d.name + '</div>' +
+                                    '<div class="tooltip-row">' +
+                                        '<span class="tooltip-label">Total Flow:</span>' +
+                                        '<span class="tooltip-value">' + formatCurrency(nodeValue) + '</span>' +
+                                    '</div>' +
+                                    '<div class="tooltip-row">' +
+                                        '<span class="tooltip-label">Percentage:</span>' +
+                                        '<span class="tooltip-value">' + formatPercent(nodeValue) + '</span>' +
+                                    '</div>';
+                                showTooltip(tooltipContent, event);
+                            }}
+                        }})
+                        .on("mousemove", function(event) {{
+                            if (!selectedNode && !selectedLink) {{
+                                tooltip
+                                    .style("left", (event.pageX + 15) + "px")
+                                    .style("top", (event.pageY - 15) + "px");
+                            }}
+                        }})
+                        .on("mouseout", function() {{
+                            if (!selectedNode && !selectedLink) {{
+                                hideTooltip();
+                            }}
+                        }});
+                    
+                    node.append("foreignObject")
+                        .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 210)
+                        .attr("y", d => (d.y1 + d.y0) / 2 - 25)
+                        .attr("width", 200)
+                        .attr("height", 80)
+                        .append("xhtml:div")
+                        .attr("class", "node-label")
+                        .style("text-align", d => d.x0 < width / 2 ? "left" : "right")
+                        .html(d => {{
+                            const nodeValue = d3.sum(graph.links.filter(l => 
+                                l.source === d || l.target === d
+                            ), l => l.value);
+                            return '<div>' + (d.displayName || d.name) + '</div>' +
+                                '<div class="node-value">' + formatCurrency(nodeValue) + '</div>';
+                        }});
+                }}
+                
+                document.getElementById('detail-toggle').addEventListener('change', function() {{
+                    showSubcategory = this.checked;
+                    
+                    if (showSubcategory) {{
+                        currentData = JSON.parse(JSON.stringify(originalData));
+                    }} else {{
+                        currentData = aggregateToCategory(originalData);
                     }}
-                }})
-                .on("mouseover", function(event, d) {{
-                    if (!selectedNode && !selectedLink) {{
-                        const nodeValue = d3.sum(graph.links.filter(l => 
-                            l.source === d || l.target === d
-                        ), l => l.value);
-                        
-                        const tooltipContent = `
-                            <div class="tooltip-header">${{d.name}}</div>
-                            <div class="tooltip-row">
-                                <span class="tooltip-label">Total Flow:</span>
-                                <span class="tooltip-value">${{formatCurrency(nodeValue)}}</span>
-                            </div>
-                            <div class="tooltip-row">
-                                <span class="tooltip-label">Percentage:</span>
-                                <span class="tooltip-value">${{formatPercent(nodeValue)}}</span>
-                            </div>
-                        `;
-                        showTooltip(tooltipContent, event);
-                    }}
-                }})
-                .on("mousemove", function(event) {{
-                    if (!selectedNode && !selectedLink) {{
-                        tooltip
-                            .style("left", (event.pageX + 15) + "px")
-                            .style("top", (event.pageY - 15) + "px");
-                    }}
-                }})
-                .on("mouseout", function() {{
-                    if (!selectedNode && !selectedLink) {{
-                        hideTooltip();
-                    }}
+                    
+                    renderSankey(currentData);
                 }});
-            
-            // Enhanced labels with values
-            node.append("foreignObject")
-                .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 210)
-                .attr("y", d => (d.y1 + d.y0) / 2 - 25)
-                .attr("width", 200)
-                .attr("height", 80)
-                .append("xhtml:div")
-                .attr("class", "node-label")
-                .style("text-align", d => d.x0 < width / 2 ? "left" : "right")
-                .html(d => {{
-                    const nodeValue = d3.sum(graph.links.filter(l => 
-                        l.source === d || l.target === d
-                    ), l => l.value);
-                    return `
-                        <div>${{d.displayName || d.name}}</div>
-                        <div class="node-value">${{formatCurrency(nodeValue)}}</div>
-                    `;
-                }});
-        </script>
-    </body>
-    </html>
-    """
+                
+                renderSankey(currentData);
+            </script>
+        </body>
+        </html>
+        """
     
     components.html(html_content, height=1000, scrolling=False)
 
