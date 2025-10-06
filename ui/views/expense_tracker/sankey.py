@@ -56,66 +56,54 @@ def render_sankey_tab(df):
 
 def _generate_sankey_data(df):
     """
-    Generate nodes and links data for Sankey diagram.
+    Generate nodes and links for a Sankey diagram showing income and expenses.
     
     Args:
         df (pd.DataFrame): Transactions dataframe
-        
+    
     Returns:
-        dict: Dictionary containing 'nodes' and 'links' lists
+        dict: Sankey data with 'nodes' and 'links' keys.
     """
     nodes = []
     links = []
     node_map = {}
     node_idx = 0
-    
-    # Separate income and expenses (assuming positive = income, negative = expense)
+
+    # Separate income and expenses
     income_df = df[df[ColumnNames.CATEGORY] == 'Income']
     expense_df = df[df[ColumnNames.CATEGORY] != 'Income']
-    
+
     total_income = income_df[ColumnNames.AMOUNT].sum()
     total_expenses = abs(expense_df[ColumnNames.AMOUNT].sum())
-    
-    # Add income subcategory/category nodes
+
+    # === Income Sources ===
     income_sources = {}
     for category in income_df[ColumnNames.CATEGORY].unique():
-        category_income_df = income_df[income_df[ColumnNames.CATEGORY] == category]
-        
-        # Check if there are subcategories
-        has_subcategories = (
-            category_income_df[ColumnNames.SUBCATEGORY].notna() & 
-            (category_income_df[ColumnNames.SUBCATEGORY] != '')
-        ).any()
-        
-        if has_subcategories:
-            # Group by subcategory
-            subcategory_totals = (
-                category_income_df[category_income_df[ColumnNames.SUBCATEGORY].notna() & 
-                                 (category_income_df[ColumnNames.SUBCATEGORY] != '')]
+        cat_df = income_df[income_df[ColumnNames.CATEGORY] == category]
+        if (cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != '')).any():
+            sub_totals = (
+                cat_df[cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != '')]
                 .groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
                 .sum()
             )
-            
-            for subcategory, amount in subcategory_totals.items():
-                source_name = f"{category} - {subcategory}"
+            for sub, amount in sub_totals.items():
+                source_name = f"{category} - {sub}"
                 income_sources[source_name] = amount
         else:
-            # Use category as income source
-            amount = category_income_df[ColumnNames.AMOUNT].sum()
-            income_sources[category] = amount
-    
+            income_sources[category] = cat_df[ColumnNames.AMOUNT].sum()
+
     # Add income source nodes
-    for source_name, amount in sorted(income_sources.items(), key=lambda x: x[1], reverse=True):
+    for name, amount in sorted(income_sources.items(), key=lambda x: x[1], reverse=True):
         pct = (amount / total_income * 100) if total_income > 0 else 0
         nodes.append({
-            "name": source_name,
-            "displayName": f"{source_name}<br/>${amount:,.2f} ({pct:.1f}%)",
+            "name": name,
+            "displayName": f"{name}<br/>${amount:,.2f} ({pct:.1f}%)",
             "color": CATEGORY_COLORS.get('Total', '#3b82f6')
         })
-        node_map[source_name] = node_idx
+        node_map[name] = node_idx
         node_idx += 1
-    
-    # Add Total Income node
+
+    # Total Income node
     total_income_idx = node_idx
     nodes.append({
         "name": "Total Income",
@@ -124,73 +112,70 @@ def _generate_sankey_data(df):
     })
     node_map['Total Income'] = node_idx
     node_idx += 1
-    
-    # Link income sources to Total Income
-    for source_name, amount in income_sources.items():
+
+    # Links: Income sources → Total Income
+    for name, amount in income_sources.items():
         links.append({
-            "source": node_map[source_name],
+            "source": node_map[name],
             "target": total_income_idx,
             "value": float(amount)
         })
-    
-    # Group expenses by category
+
+    # === Expenses by Category ===
     category_totals = (
         expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .apply(lambda x: abs(x.sum()))
         .sort_values(ascending=False)
     )
-    
-    # Add expense category nodes and links from Total Income to categories
+
     for category, amount in category_totals.items():
         pct = (amount / total_expenses * 100) if total_expenses > 0 else 0
-        
         nodes.append({
             "name": category,
             "displayName": f"{category}<br/>${amount:,.2f} ({pct:.1f}%)",
             "color": CATEGORY_COLORS.get(category, DEFAULT_COLOR)
         })
         node_map[category] = node_idx
-        
-        # Link from Total Income to expense category
         links.append({
             "source": total_income_idx,
             "target": node_idx,
             "value": float(amount)
         })
         node_idx += 1
-    
-    # Add expense subcategory nodes
-    # Categories are already sorted by amount (descending)
-    # Subcategories within each category will also be sorted by amount (descending)
+
+    # === Subcategories (as end nodes) ===
     for category in category_totals.index:
         node_idx = _add_subcategory_nodes(
-            expense_df, 
-            category, 
+            expense_df,
+            category,
             category_totals[category],
             node_map,
             nodes,
             links,
             node_idx
         )
-    
-    # Add Savings node last to ensure it appears at the bottom
+
+    # === Savings (Remaining) as End Node ===
     remaining = total_income - total_expenses
     if remaining > 0:
-        pct = (remaining / total_income * 100) if total_income > 0 else 0
+        pct = (remaining / total_income * 100)
         nodes.append({
             "name": "Savings",
             "displayName": f"Savings<br/>${remaining:,.2f} ({pct:.1f}%)",
-            "color": CATEGORY_COLORS.get('Savings', '#22c55e')
+            "color": CATEGORY_COLORS.get('Savings', 'blue')
         })
-        
-        # Link from Total Income to Savings
         links.append({
             "source": total_income_idx,
             "target": node_idx,
             "value": float(remaining)
         })
-    
+        node_idx += 1
+
     return {"nodes": nodes, "links": links}
+
+
+
+
 def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx):
     """
     Add subcategory nodes and links for a given category.
@@ -240,10 +225,9 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     return node_idx
 
-
 def _render_sankey_diagram(data):
     """
-    Render the D3.js-based Sankey diagram.
+    Render an enhanced D3.js-based Sankey diagram with improved interactivity and styling.
     
     Args:
         data (dict): Sankey data containing nodes and links
@@ -255,61 +239,170 @@ def _render_sankey_diagram(data):
         <script src="https://d3js.org/d3.v7.min.js"></script>
         <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
         <style>
+            * {{
+                box-sizing: border-box;
+            }}
             body {{
                 margin: 0;
                 padding: 20px;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                background: white;
+                background: #fafafa;
             }}
-            #chart {{ background: white; }}
+            .container {{
+                background: white;
+                border-radius: 12px;
+                padding: 24px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }}
+            #chart {{ 
+                background: white;
+                width: 100%;
+                height: auto;
+            }}
             .node rect {{
                 stroke: #fff;
                 stroke-width: 2px;
                 cursor: pointer;
+                transition: opacity 0.2s ease;
             }}
-            .node rect:hover {{ opacity: 0.8; }}
+            .node rect:hover {{ 
+                opacity: 0.85;
+                stroke-width: 3px;
+            }}
             .link {{
                 fill: none;
-                stroke-opacity: 0.4;
+                stroke-opacity: 0.35;
+                transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
             }}
-            .link:hover {{ stroke-opacity: 0.7; }}
+            .link:hover {{ 
+                stroke-opacity: 0.65;
+            }}
+            .link.highlighted {{
+                stroke-opacity: 0.7;
+                stroke-width: 2px;
+            }}
+            .link.dimmed {{
+                stroke-opacity: 0.1;
+            }}
             .node-label {{
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 500;
                 pointer-events: none;
+                line-height: 1.4;
+            }}
+            .node-value {{
+                font-size: 11px;
+                color: #666;
+                font-weight: 400;
             }}
             .title {{
-                font-size: 24px;
+                font-size: 26px;
                 font-weight: 600;
-                margin-bottom: 20px;
+                margin-bottom: 8px;
+                color: #1a1a1a;
+            }}
+            .subtitle {{
+                font-size: 14px;
+                color: #666;
+                margin-bottom: 24px;
+            }}
+            .tooltip {{
+                position: absolute;
+                padding: 12px 16px;
+                background: rgba(0, 0, 0, 0.9);
+                color: white;
+                border-radius: 6px;
+                font-size: 13px;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.2s ease;
+                z-index: 1000;
+                max-width: 280px;
+                line-height: 1.5;
+            }}
+            .tooltip.visible {{
+                opacity: 1;
+            }}
+            .tooltip-header {{
+                font-weight: 600;
+                margin-bottom: 6px;
+                font-size: 14px;
+            }}
+            .tooltip-row {{
+                display: flex;
+                justify-content: space-between;
+                margin: 4px 0;
+            }}
+            .tooltip-label {{
+                color: #ccc;
+            }}
+            .tooltip-value {{
+                font-weight: 500;
+                margin-left: 12px;
             }}
         </style>
     </head>
     <body>
-        <div class="title">Cash Flow Visualization</div>
-        <svg id="chart"></svg>
+        <div class="container">
+            <div class="title">Cash Flow Visualization</div>
+            <div class="subtitle">Interactive Sankey diagram showing the flow of funds</div>
+            <svg id="chart"></svg>
+            <div class="tooltip" id="tooltip"></div>
+        </div>
         <script>
             const data = {json.dumps(data)};
             
-            const width = 1400;
+            // Responsive dimensions
+            const containerWidth = document.querySelector('.container').clientWidth - 48;
+            const width = Math.max(1200, containerWidth);
             const height = 800;
             
             const svg = d3.select("#chart")
                 .attr("width", width)
                 .attr("height", height)
-                .attr("viewBox", [0, 0, width, height]);
+                .attr("viewBox", [0, 0, width, height])
+                .attr("preserveAspectRatio", "xMidYMid meet");
             
             const sankey = d3.sankey()
                 .nodeId(d => d.index)
-                .nodeWidth(35)
-                .nodePadding(25)
-                .extent([[1, 1], [width - 1, height - 6]]);
+                .nodeWidth(40)
+                .nodePadding(30)
+                .extent([[50, 50], [width - 50, height - 50]]);
             
             data.nodes.forEach((node, i) => node.index = i);
             
             const graph = sankey(data);
             
-            // Add links
+            // Calculate totals for percentages
+            const totalFlow = d3.sum(graph.links, d => d.value);
+            
+            // Enhanced tooltip
+            const tooltip = d3.select("#tooltip");
+            
+            function showTooltip(content, event) {{
+                tooltip
+                    .html(content)
+                    .classed("visible", true)
+                    .style("left", (event.pageX + 15) + "px")
+                    .style("top", (event.pageY - 15) + "px");
+            }}
+            
+            function hideTooltip() {{
+                tooltip.classed("visible", false);
+            }}
+            
+            function formatCurrency(value) {{
+                return '$' + value.toLocaleString('en-US', {{ 
+                    minimumFractionDigits: 2, 
+                    maximumFractionDigits: 2 
+                }});
+            }}
+            
+            function formatPercent(value) {{
+                return ((value / totalFlow) * 100).toFixed(1) + '%';
+            }}
+            
+            // Add links with enhanced interactivity
             const link = svg.append("g")
                 .attr("class", "links")
                 .selectAll("path")
@@ -317,49 +410,106 @@ def _render_sankey_diagram(data):
                 .join("path")
                 .attr("class", "link")
                 .attr("d", d3.sankeyLinkHorizontal())
-                .attr("stroke", d => d.source.color)
-                .attr("stroke-width", d => Math.max(1, d.width))
-                .style("stroke-opacity", 0.4);
-            
-            link.append("title")
-                .text(d => d.source.name + ' → ' + d.target.name + '\\n$' + 
-                      d.value.toLocaleString('en-US', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}));
+                .attr("stroke", d => d.source.color || '#999')
+                .attr("stroke-width", d => Math.max(2, d.width))
+                .on("mouseover", function(event, d) {{
+                    d3.select(this).classed("highlighted", true);
+                    
+                    const tooltipContent = `
+                        <div class="tooltip-header">${{d.source.name}} → ${{d.target.name}}</div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Amount:</span>
+                            <span class="tooltip-value">${{formatCurrency(d.value)}}</span>
+                        </div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Percentage:</span>
+                            <span class="tooltip-value">${{formatPercent(d.value)}}</span>
+                        </div>
+                    `;
+                    showTooltip(tooltipContent, event);
+                }})
+                .on("mousemove", function(event) {{
+                    tooltip
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 15) + "px");
+                }})
+                .on("mouseout", function() {{
+                    d3.select(this).classed("highlighted", false);
+                    hideTooltip();
+                }});
             
             // Add nodes
             const node = svg.append("g")
                 .attr("class", "nodes")
                 .selectAll("g")
                 .data(graph.nodes)
-                .join("g");
+                .join("g")
+                .attr("class", "node");
             
             node.append("rect")
                 .attr("x", d => d.x0)
                 .attr("y", d => d.y0)
                 .attr("height", d => d.y1 - d.y0)
                 .attr("width", d => d.x1 - d.x0)
-                .attr("fill", d => d.color);
+                .attr("fill", d => d.color || '#69b3a2')
+                .on("mouseover", function(event, d) {{
+                    // Highlight all connected links
+                    link.classed("dimmed", true);
+                    link.filter(l => l.source === d || l.target === d)
+                        .classed("dimmed", false)
+                        .classed("highlighted", true);
+                    
+                    const nodeValue = d3.sum(graph.links.filter(l => 
+                        l.source === d || l.target === d
+                    ), l => l.value);
+                    
+                    const tooltipContent = `
+                        <div class="tooltip-header">${{d.name}}</div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Total Flow:</span>
+                            <span class="tooltip-value">${{formatCurrency(nodeValue)}}</span>
+                        </div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">Percentage:</span>
+                            <span class="tooltip-value">${{formatPercent(nodeValue)}}</span>
+                        </div>
+                    `;
+                    showTooltip(tooltipContent, event);
+                }})
+                .on("mousemove", function(event) {{
+                    tooltip
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 15) + "px");
+                }})
+                .on("mouseout", function() {{
+                    link.classed("dimmed", false).classed("highlighted", false);
+                    hideTooltip();
+                }});
             
-            node.append("title")
-                .text(d => d.displayName.replace(/<br\\/>/g, '\\n'));
-            
-            // Add labels
+            // Enhanced labels with values
             node.append("foreignObject")
-                .attr("x", d => d.x0 < width / 2 ? d.x1 + 8 : d.x0 - 8)
-                .attr("y", d => (d.y1 + d.y0) / 2 - 30)
+                .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 210)
+                .attr("y", d => (d.y1 + d.y0) / 2 - 25)
                 .attr("width", 200)
-                .attr("height", 60)
-                .attr("text-anchor", d => d.x0 < width / 2 ? "start" : "end")
+                .attr("height", 80)
                 .append("xhtml:div")
                 .attr("class", "node-label")
                 .style("text-align", d => d.x0 < width / 2 ? "left" : "right")
-                .html(d => d.displayName);
+                .html(d => {{
+                    const nodeValue = d3.sum(graph.links.filter(l => 
+                        l.source === d || l.target === d
+                    ), l => l.value);
+                    return `
+                        <div>${{d.displayName || d.name}}</div>
+                        <div class="node-value">${{formatCurrency(nodeValue)}}</div>
+                    `;
+                }});
         </script>
     </body>
     </html>
     """
     
     components.html(html_content, height=900, scrolling=False)
-
 
 def _render_sankey_summary(df):
     """
