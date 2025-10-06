@@ -225,6 +225,7 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     return node_idx
 
+
 def _render_sankey_diagram(data):
     """
     Render an enhanced D3.js-based Sankey diagram with improved interactivity and styling.
@@ -271,18 +272,21 @@ def _render_sankey_diagram(data):
             }}
             .link {{
                 fill: none;
-                stroke-opacity: 0.35;
+                stroke-opacity: 0.3;
                 transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
+                mix-blend-mode: multiply;
             }}
             .link:hover {{ 
-                stroke-opacity: 0.65;
+                stroke-opacity: 0.7;
+                mix-blend-mode: normal;
             }}
             .link.highlighted {{
-                stroke-opacity: 0.7;
+                stroke-opacity: 0.75;
                 stroke-width: 2px;
+                mix-blend-mode: normal;
             }}
             .link.dimmed {{
-                stroke-opacity: 0.1;
+                stroke-opacity: 0.08;
             }}
             .node-label {{
                 font-size: 13px;
@@ -345,7 +349,7 @@ def _render_sankey_diagram(data):
     <body>
         <div class="container">
             <div class="title">Cash Flow Visualization</div>
-            <div class="subtitle">Interactive Sankey diagram showing the flow of funds</div>
+            <div class="subtitle">Click on nodes or links to highlight connections • Click background to deselect</div>
             <svg id="chart"></svg>
             <div class="tooltip" id="tooltip"></div>
         </div>
@@ -355,23 +359,42 @@ def _render_sankey_diagram(data):
             // Responsive dimensions
             const containerWidth = document.querySelector('.container').clientWidth - 48;
             const width = Math.max(1200, containerWidth);
-            const height = 800;
+            const height = 900;
             
             const svg = d3.select("#chart")
                 .attr("width", width)
                 .attr("height", height)
                 .attr("viewBox", [0, 0, width, height])
-                .attr("preserveAspectRatio", "xMidYMid meet");
+                .attr("preserveAspectRatio", "xMidYMid meet")
+                .on("click", function() {{
+                    // Deselect when clicking on background
+                    selectedNode = null;
+                    selectedLink = null;
+                    link.classed("highlighted", false).classed("dimmed", false);
+                    node.classed("selected", false).classed("dimmed", false);
+                    hideTooltip();
+                }});
+            
+            // Add gradient definitions for links
+            const defs = svg.append("defs");
             
             const sankey = d3.sankey()
                 .nodeId(d => d.index)
                 .nodeWidth(40)
-                .nodePadding(30)
+                .nodePadding(35)
+                .nodeAlign(d3.sankeyJustify)
+                .nodeSort((a, b) => a.y0 - b.y0)
+                .linkSort((a, b) => a.source.y0 - b.source.y0)
+                .iterations(50)
                 .extent([[50, 50], [width - 50, height - 50]]);
             
             data.nodes.forEach((node, i) => node.index = i);
             
             const graph = sankey(data);
+            
+            // Track selected element
+            let selectedNode = null;
+            let selectedLink = null;
             
             // Calculate totals for percentages
             const totalFlow = d3.sum(graph.links, d => d.value);
@@ -410,32 +433,74 @@ def _render_sankey_diagram(data):
                 .join("path")
                 .attr("class", "link")
                 .attr("d", d3.sankeyLinkHorizontal())
-                .attr("stroke", d => d.source.color || '#999')
-                .attr("stroke-width", d => Math.max(2, d.width))
-                .on("mouseover", function(event, d) {{
-                    d3.select(this).classed("highlighted", true);
+                .attr("stroke", d => {{
+                    const gradientId = `gradient-${{d.source.index}}-${{d.target.index}}`;
+                    const gradient = defs.append("linearGradient")
+                        .attr("id", gradientId)
+                        .attr("gradientUnits", "userSpaceOnUse")
+                        .attr("x1", d.source.x1)
+                        .attr("x2", d.target.x0);
                     
-                    const tooltipContent = `
-                        <div class="tooltip-header">${{d.source.name}} → ${{d.target.name}}</div>
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Amount:</span>
-                            <span class="tooltip-value">${{formatCurrency(d.value)}}</span>
-                        </div>
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Percentage:</span>
-                            <span class="tooltip-value">${{formatPercent(d.value)}}</span>
-                        </div>
-                    `;
-                    showTooltip(tooltipContent, event);
+                    gradient.append("stop")
+                        .attr("offset", "0%")
+                        .attr("stop-color", d.source.color || '#999');
+                    
+                    gradient.append("stop")
+                        .attr("offset", "100%")
+                        .attr("stop-color", d.target.color || '#999');
+                    
+                    return `url(#${{gradientId}})`;
+                }})
+                .attr("stroke-width", d => Math.max(2, d.width))
+                .on("click", function(event, d) {{
+                    event.stopPropagation();
+                    
+                    // Clear previous selections
+                    link.classed("highlighted", false);
+                    node.classed("selected", false);
+                    
+                    // Toggle selection
+                    if (selectedLink === d) {{
+                        selectedLink = null;
+                        link.classed("dimmed", false);
+                        node.classed("dimmed", false);
+                    }} else {{
+                        selectedLink = d;
+                        selectedNode = null;
+                        d3.select(this).classed("highlighted", true);
+                        link.filter(l => l !== d).classed("dimmed", true);
+                        
+                        // Dim nodes not connected to this link
+                        node.classed("dimmed", n => n !== d.source && n !== d.target);
+                    }}
+                }})
+                .on("mouseover", function(event, d) {{
+                    if (!selectedLink && !selectedNode) {{
+                        const tooltipContent = `
+                            <div class="tooltip-header">${{d.source.name}} → ${{d.target.name}}</div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Amount:</span>
+                                <span class="tooltip-value">${{formatCurrency(d.value)}}</span>
+                            </div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Percentage:</span>
+                                <span class="tooltip-value">${{formatPercent(d.value)}}</span>
+                            </div>
+                        `;
+                        showTooltip(tooltipContent, event);
+                    }}
                 }})
                 .on("mousemove", function(event) {{
-                    tooltip
-                        .style("left", (event.pageX + 15) + "px")
-                        .style("top", (event.pageY - 15) + "px");
+                    if (!selectedLink && !selectedNode) {{
+                        tooltip
+                            .style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY - 15) + "px");
+                    }}
                 }})
                 .on("mouseout", function() {{
-                    d3.select(this).classed("highlighted", false);
-                    hideTooltip();
+                    if (!selectedLink && !selectedNode) {{
+                        hideTooltip();
+                    }}
                 }});
             
             // Add nodes
@@ -452,38 +517,72 @@ def _render_sankey_diagram(data):
                 .attr("height", d => d.y1 - d.y0)
                 .attr("width", d => d.x1 - d.x0)
                 .attr("fill", d => d.color || '#69b3a2')
+                .on("click", function(event, d) {{
+                    event.stopPropagation();
+                    
+                    // Clear previous selections
+                    link.classed("highlighted", false).classed("dimmed", false);
+                    node.classed("selected", false).classed("dimmed", false);
+                    
+                    // Toggle selection
+                    if (selectedNode === d) {{
+                        selectedNode = null;
+                        link.classed("dimmed", false);
+                        node.classed("dimmed", false);
+                    }} else {{
+                        selectedNode = d;
+                        selectedLink = null;
+                        d3.select(this.parentNode).classed("selected", true);
+                        
+                        // Highlight connected links and dim others
+                        link.classed("dimmed", true);
+                        link.filter(l => l.source === d || l.target === d)
+                            .classed("dimmed", false)
+                            .classed("highlighted", true);
+                        
+                        // Dim unconnected nodes
+                        const connectedNodes = new Set();
+                        connectedNodes.add(d);
+                        graph.links.forEach(l => {{
+                            if (l.source === d || l.target === d) {{
+                                connectedNodes.add(l.source);
+                                connectedNodes.add(l.target);
+                            }}
+                        }});
+                        node.classed("dimmed", n => !connectedNodes.has(n));
+                    }}
+                }})
                 .on("mouseover", function(event, d) {{
-                    // Highlight all connected links
-                    link.classed("dimmed", true);
-                    link.filter(l => l.source === d || l.target === d)
-                        .classed("dimmed", false)
-                        .classed("highlighted", true);
-                    
-                    const nodeValue = d3.sum(graph.links.filter(l => 
-                        l.source === d || l.target === d
-                    ), l => l.value);
-                    
-                    const tooltipContent = `
-                        <div class="tooltip-header">${{d.name}}</div>
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Total Flow:</span>
-                            <span class="tooltip-value">${{formatCurrency(nodeValue)}}</span>
-                        </div>
-                        <div class="tooltip-row">
-                            <span class="tooltip-label">Percentage:</span>
-                            <span class="tooltip-value">${{formatPercent(nodeValue)}}</span>
-                        </div>
-                    `;
-                    showTooltip(tooltipContent, event);
+                    if (!selectedNode && !selectedLink) {{
+                        const nodeValue = d3.sum(graph.links.filter(l => 
+                            l.source === d || l.target === d
+                        ), l => l.value);
+                        
+                        const tooltipContent = `
+                            <div class="tooltip-header">${{d.name}}</div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Total Flow:</span>
+                                <span class="tooltip-value">${{formatCurrency(nodeValue)}}</span>
+                            </div>
+                            <div class="tooltip-row">
+                                <span class="tooltip-label">Percentage:</span>
+                                <span class="tooltip-value">${{formatPercent(nodeValue)}}</span>
+                            </div>
+                        `;
+                        showTooltip(tooltipContent, event);
+                    }}
                 }})
                 .on("mousemove", function(event) {{
-                    tooltip
-                        .style("left", (event.pageX + 15) + "px")
-                        .style("top", (event.pageY - 15) + "px");
+                    if (!selectedNode && !selectedLink) {{
+                        tooltip
+                            .style("left", (event.pageX + 15) + "px")
+                            .style("top", (event.pageY - 15) + "px");
+                    }}
                 }})
                 .on("mouseout", function() {{
-                    link.classed("dimmed", false).classed("highlighted", false);
-                    hideTooltip();
+                    if (!selectedNode && !selectedLink) {{
+                        hideTooltip();
+                    }}
                 }});
             
             // Enhanced labels with values
@@ -509,7 +608,8 @@ def _render_sankey_diagram(data):
     </html>
     """
     
-    components.html(html_content, height=900, scrolling=False)
+    components.html(html_content, height=1000, scrolling=False)
+
 
 def _render_sankey_summary(df):
     """
