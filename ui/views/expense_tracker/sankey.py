@@ -49,9 +49,6 @@ def render_sankey_tab(df):
         return
     
     st.divider()
-    
-    # Display summary metrics
-    _render_sankey_summary(df)
 
 
 def _generate_sankey_data(df):
@@ -225,17 +222,47 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     return node_idx
 
-def _render_sankey_diagram(data):
+
+def _render_sankey_diagram(data: dict) -> None:
     """
-    Render an enhanced D3.js-based Sankey diagram with improved interactivity and styling.
+    Render an enhanced D3.js-based Sankey diagram.
     
     Args:
-        data (dict): Sankey data containing nodes and links
+        data (dict): Sankey data containing:
+            - nodes: List of dicts with 'name', optional 'color', 'category'
+            - links: List of dicts with 'source', 'target', 'value'
+    
+    Raises:
+        ValueError: If data structure is invalid
     """
+    import json
+    
+    # Validate input data
+    if not isinstance(data, dict):
+        raise ValueError("Data must be a dictionary")
+    if 'nodes' not in data or 'links' not in data:
+        raise ValueError("Data must contain 'nodes' and 'links' keys")
+    if not data['nodes'] or not data['links']:
+        raise ValueError("Nodes and links cannot be empty")
+    
+    # Validate node structure
+    for i, node in enumerate(data['nodes']):
+        if 'name' not in node:
+            raise ValueError(f"Node at index {i} missing 'name' field")
+    
+    # Validate link structure
+    for i, link in enumerate(data['links']):
+        required_fields = ['source', 'target', 'value']
+        for field in required_fields:
+            if field not in link:
+                raise ValueError(f"Link at index {i} missing '{field}' field")
+    
     html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <script src="https://d3js.org/d3.v7.min.js"></script>
             <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
             <style>
@@ -246,18 +273,88 @@ def _render_sankey_diagram(data):
                     margin: 0;
                     padding: 20px;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                    background: #fafafa;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
                 }}
                 .container {{
                     background: white;
-                    border-radius: 12px;
-                    padding: 24px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    border-radius: 16px;
+                    padding: 32px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    max-width: 1800px;
+                    margin: 0 auto;
+                }}
+                .header {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 24px;
+                    flex-wrap: wrap;
+                    gap: 16px;
+                }}
+                .title-section {{
+                    flex: 1;
+                    min-width: 300px;
+                }}
+                .title {{
+                    font-size: 32px;
+                    font-weight: 700;
+                    margin-bottom: 8px;
+                    color: #1a1a1a;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                }}
+                .subtitle {{
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 12px;
+                }}
+                .controls {{
+                    display: flex;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    align-items: center;
+                }}
+
+                .btn {{
+                    padding: 10px 20px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: transform 0.2s, box-shadow 0.2s;
+                }}
+                .btn:hover {{
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                }}
+                .btn:active {{
+                    transform: translateY(0);
+                }}
+                .btn-secondary {{
+                    background: white;
+                    color: #667eea;
+                    border: 2px solid #667eea;
+                }}
+                .btn-secondary:hover {{
+                    background: #f9fafb;
                 }}
                 #chart {{ 
                     background: white;
                     width: 100%;
                     height: auto;
+                    border-radius: 8px;
+                }}
+                .chart-wrapper {{
+                    position: relative;
+                    overflow: hidden;
+                    border-radius: 8px;
+                    border: 1px solid #e5e7eb;
                 }}
                 .node rect {{
                     stroke: #fff;
@@ -298,118 +395,219 @@ def _render_sankey_diagram(data):
                 }}
                 .link.dimmed {{
                     stroke-opacity: 0.15;
-                    filter: blur(2px);
+                    filter: blur(3px);
                 }}
                 .node-label {{
                     font-size: 13px;
                     font-weight: 500;
                     pointer-events: none;
                     line-height: 1.4;
+                    transition: font-weight 0.2s ease;
                 }}
-                .node-value {{
-                    font-size: 11px;
-                    color: #666;
-                    font-weight: 400;
+                .node.highlighted .node-label {{
+                    font-weight: 700;
                 }}
-                .title {{
-                    font-size: 26px;
-                    font-weight: 600;
-                    margin-bottom: 8px;
-                    color: #1a1a1a;
+                @keyframes fadeIn {{
+                    from {{ opacity: 0; transform: translateY(10px); }}
+                    to {{ opacity: 1; transform: translateY(0); }}
                 }}
-                .subtitle {{
-                    font-size: 14px;
-                    color: #666;
-                    margin-bottom: 24px;
-                }}
-                .tooltip {{
-                    position: absolute;
-                    padding: 12px 16px;
-                    background: rgba(0, 0, 0, 0.9);
-                    color: white;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    pointer-events: none;
+                .node {{
+                    animation: fadeIn 0.6s ease-out forwards;
                     opacity: 0;
-                    transition: opacity 0.2s ease;
-                    z-index: 1000;
-                    max-width: 280px;
-                    line-height: 1.5;
                 }}
-                .tooltip.visible {{
-                    opacity: 1;
+                .link {{
+                    animation: fadeIn 0.8s ease-out forwards;
+                    opacity: 0;
                 }}
-                .tooltip-header {{
-                    font-weight: 600;
-                    margin-bottom: 6px;
-                    font-size: 14px;
-                }}
-                .tooltip-row {{
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 4px 0;
-                }}
-                .tooltip-label {{
-                    color: #ccc;
-                }}
-                .tooltip-value {{
-                    font-weight: 500;
-                    margin-left: 12px;
+                @media (max-width: 768px) {{
+                    .container {{
+                        padding: 16px;
+                    }}
+                    .title {{
+                        font-size: 24px;
+                    }}
+                    .controls {{
+                        width: 100%;
+                    }}
                 }}
             </style>
         </head>
         <body>
             <div class="container">
-                <div class="title">Cash Flow Visualization</div>
-                <div class="subtitle">Click on nodes or links to highlight connections • Click background to deselect</div>
-                <svg id="chart"></svg>
-                <div class="tooltip" id="tooltip"></div>
+                <div class="header">
+                    <div class="title-section">
+                        <div class="title">Cash Flow Visualization</div>
+                        <div class="subtitle">Interactive Sankey Diagram • Click nodes/links to highlight • Use mouse wheel to zoom</div>
+                    </div>
+                    <div class="controls">
+                        <button class="btn" onclick="resetView()">Reset View</button>
+                        <button class="btn btn-secondary" onclick="exportPNG()">Save as PNG</button>
+                    </div>
+                </div>
+                
+                <div class="chart-wrapper">
+                    <svg id="chart"></svg>
+                </div>
             </div>
+            
             <script>
                 const data = {json.dumps(data)};
                 
-                const containerWidth = document.querySelector('.container').clientWidth - 48;
-                const width = Math.max(1200, containerWidth);
-                const height = 900;
+                // Color scheme
+                const colorPalette = [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', 
+                    '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
+                    '#06b6d4', '#84cc16', '#f43f5e', '#6366f1'
+                ];
                 
-                const tooltip = d3.select("#tooltip");
+                let selectedNode = null;
+                let selectedLink = null;
+                let currentTransform = d3.zoomIdentity;
                 
-                function formatCurrency(value) {{
-                    return '$' + value.toLocaleString('en-US', {{ 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
-                    }});
+                function getResponsiveWidth() {{
+                    const containerWidth = document.querySelector('.container').clientWidth - 64;
+                    const minWidth = 900;
+                    const maxWidth = 1600;
+                    return Math.min(maxWidth, Math.max(minWidth, containerWidth));
                 }}
                 
-                function showTooltip(content, event) {{
-                    tooltip
-                        .html(content)
-                        .classed("visible", true)
-                        .style("left", (event.pageX + 15) + "px")
-                        .style("top", (event.pageY - 15) + "px");
+                const width = getResponsiveWidth();
+                const height = 1000;
+                
+                function resetView() {{
+                    selectedNode = null;
+                    selectedLink = null;
+                    d3.selectAll('.link').classed("highlighted", false).classed("dimmed", false);
+                    d3.selectAll('.node').classed("selected", false).classed("dimmed", false).classed("highlighted", false);
+                    
+                    // Reset zoom
+                    d3.select("#chart")
+                        .transition()
+                        .duration(750)
+                        .call(zoom.transform, d3.zoomIdentity);
                 }}
                 
-                function hideTooltip() {{
-                    tooltip.classed("visible", false);
+                function exportPNG() {{
+                    const svgElement = document.getElementById('chart');
+                    const mainGroup = svgElement.querySelector('.main');
+                    
+                    // Get the bounding box of actual content
+                    const bbox = mainGroup.getBBox();
+                    const padding = 40;
+                    
+                    // Clone SVG and prepare for export
+                    const exportSvg = svgElement.cloneNode(true);
+                    
+                    // Inline all CSS styles
+                    const styleElement = document.createElement('style');
+                    styleElement.textContent = `
+                        .node rect {{
+                            stroke: #fff;
+                            stroke-width: 2px;
+                        }}
+                        .link {{
+                            fill: none;
+                            stroke-opacity: 0.3;
+                        }}
+                        .node-label {{
+                            font-size: 13px;
+                            font-weight: 500;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                        }}
+                    `;
+                    exportSvg.insertBefore(styleElement, exportSvg.firstChild);
+                    
+                    // Set proper dimensions
+                    exportSvg.setAttribute('width', bbox.width + padding * 2);
+                    exportSvg.setAttribute('height', bbox.height + padding * 2);
+                    exportSvg.setAttribute('viewBox', `${{bbox.x - padding}} ${{bbox.y - padding}} ${{bbox.width + padding * 2}} ${{bbox.height + padding * 2}}`);
+                    exportSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    exportSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+                    
+                    const svgData = new XMLSerializer().serializeToString(exportSvg);
+                    
+                    // Create canvas
+                    const canvas = document.createElement('canvas');
+                    const scale = 2; // Higher resolution
+                    canvas.width = (bbox.width + padding * 2) * scale;
+                    canvas.height = (bbox.height + padding * 2) * scale;
+                    const ctx = canvas.getContext('2d');
+                    ctx.scale(scale, scale);
+                    
+                    // Create image
+                    const img = new Image();
+                    img.onload = function() {{
+                        // White background
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        // Draw SVG
+                        ctx.drawImage(img, 0, 0, bbox.width + padding * 2, bbox.height + padding * 2);
+                        
+                        // Download
+                        canvas.toBlob(function(blob) {{
+                            const link = document.createElement('a');
+                            link.href = URL.createObjectURL(blob);
+                            link.download = 'sankey-diagram-' + new Date().getTime() + '.png';
+                            link.click();
+                        }}, 'image/png');
+                    }};
+                    
+                    img.onerror = function(e) {{
+                        console.error('Error loading SVG:', e);
+                        alert('Error exporting PNG. Please try using your browser\\'s screenshot feature instead.');
+                    }};
+                    
+                    const svgBlob = new Blob([svgData], {{type: 'image/svg+xml;charset=utf-8'}});
+                    img.src = URL.createObjectURL(svgBlob);
                 }}
                 
                 function renderSankey() {{
                     d3.select("#chart").selectAll("*").remove();
                     
+                    // Assign colors to nodes without colors
+                    const colorScale = d3.scaleOrdinal()
+                        .domain(data.nodes.map((d, i) => d.category || i))
+                        .range(colorPalette);
+                    
+                    data.nodes.forEach((node, i) => {{
+                        if (!node.color) {{
+                            node.color = colorScale(node.category || i);
+                        }}
+                        node.index = i;
+                    }});
+                    
                     const svg = d3.select("#chart")
                         .attr("width", width)
                         .attr("height", height)
                         .attr("viewBox", [0, 0, width, height])
-                        .attr("preserveAspectRatio", "xMidYMid meet")
-                        .on("click", function() {{
+                        .attr("preserveAspectRatio", "xMidYMid meet");
+                    
+                    const g = svg.append("g")
+                        .attr("class", "main");
+                    
+                    // Add zoom behavior
+                    const zoom = d3.zoom()
+                        .scaleExtent([0.5, 3])
+                        .on("zoom", (event) => {{
+                            currentTransform = event.transform;
+                            g.attr("transform", event.transform);
+                        }});
+                    
+                    svg.call(zoom);
+                    window.zoom = zoom; // Make zoom accessible globally
+                    
+                    // Click on background to deselect
+                    svg.on("click", function(event) {{
+                        if (event.target === this) {{
                             selectedNode = null;
                             selectedLink = null;
                             link.classed("highlighted", false).classed("dimmed", false);
-                            node.classed("selected", false).classed("dimmed", false);
-                            hideTooltip();
-                        }});
+                            node.classed("selected", false).classed("dimmed", false).classed("highlighted", false);
+                        }}
+                    }});
                     
-                    const defs = svg.append("defs");
+                    const defs = g.append("defs");
                     
                     const sankey = d3.sankey()
                         .nodeId(d => d.index)
@@ -421,20 +619,10 @@ def _render_sankey_diagram(data):
                         .iterations(50)
                         .extent([[50, 50], [width - 50, height - 50]]);
                     
-                    data.nodes.forEach((node, i) => node.index = i);
-                    
                     const graph = sankey(data);
                     
-                    let selectedNode = null;
-                    let selectedLink = null;
-                    
-                    const totalFlow = d3.sum(graph.links, d => d.value);
-                    
-                    function formatPercent(value) {{
-                        return ((value / totalFlow) * 100).toFixed(1) + '%';
-                    }}
-                    
-                    const link = svg.append("g")
+                    // Create links
+                    const link = g.append("g")
                         .attr("class", "links")
                         .selectAll("path")
                         .data(graph.links)
@@ -460,11 +648,12 @@ def _render_sankey_diagram(data):
                             return 'url(#' + gradientId + ')';
                         }})
                         .attr("stroke-width", d => Math.max(2, d.width))
+                        .style("animation-delay", (d, i) => (i * 0.02) + "s")
                         .on("click", function(event, d) {{
                             event.stopPropagation();
                             
                             link.classed("highlighted", false);
-                            node.classed("selected", false);
+                            node.classed("selected", false).classed("highlighted", false);
                             
                             if (selectedLink === d) {{
                                 selectedLink = null;
@@ -473,45 +662,48 @@ def _render_sankey_diagram(data):
                             }} else {{
                                 selectedLink = d;
                                 selectedNode = null;
+                                
+                                // Highlight the clicked link
                                 d3.select(this).classed("highlighted", true);
-                                link.filter(l => l !== d).classed("dimmed", true);
-                                node.classed("dimmed", n => n !== d.source && n !== d.target);
-                            }}
-                        }})
-                        .on("mouseover", function(event, d) {{
-                            if (!selectedLink && !selectedNode) {{
-                                const tooltipContent = 
-                                    '<div class="tooltip-header">' + d.source.name + ' → ' + d.target.name + '</div>' +
-                                    '<div class="tooltip-row">' +
-                                        '<span class="tooltip-label">Amount:</span>' +
-                                        '<span class="tooltip-value">' + formatCurrency(d.value) + '</span>' +
-                                    '</div>' +
-                                    '<div class="tooltip-row">' +
-                                        '<span class="tooltip-label">Percentage:</span>' +
-                                        '<span class="tooltip-value">' + formatPercent(d.value) + '</span>' +
-                                    '</div>';
-                                showTooltip(tooltipContent, event);
-                            }}
-                        }})
-                        .on("mousemove", function(event) {{
-                            if (!selectedLink && !selectedNode) {{
-                                tooltip
-                                    .style("left", (event.pageX + 15) + "px")
-                                    .style("top", (event.pageY - 15) + "px");
-                            }}
-                        }})
-                        .on("mouseout", function() {{
-                            if (!selectedLink && !selectedNode) {{
-                                hideTooltip();
+                                
+                                // Find all downstream nodes and links
+                                const connectedNodes = new Set();
+                                const connectedLinks = new Set();
+                                connectedLinks.add(d);
+                                connectedNodes.add(d.source);
+                                connectedNodes.add(d.target);
+                                
+                                // Traverse downstream from target
+                                function traverseDownstream(node) {{
+                                    graph.links.forEach(l => {{
+                                        if (l.source === node) {{
+                                            connectedLinks.add(l);
+                                            connectedNodes.add(l.target);
+                                            traverseDownstream(l.target);
+                                        }}
+                                    }});
+                                }}
+                                
+                                traverseDownstream(d.target);
+                                
+                                // Highlight all connected links and nodes
+                                link.classed("dimmed", l => !connectedLinks.has(l));
+                                link.filter(l => connectedLinks.has(l) && l !== d)
+                                    .classed("highlighted", true);
+                                node.classed("dimmed", n => !connectedNodes.has(n));
+                                node.filter(n => connectedNodes.has(n))
+                                    .classed("highlighted", true);
                             }}
                         }});
                     
-                    const node = svg.append("g")
+                    // Create nodes
+                    const node = g.append("g")
                         .attr("class", "nodes")
                         .selectAll("g")
                         .data(graph.nodes)
                         .join("g")
-                        .attr("class", "node");
+                        .attr("class", "node")
+                        .style("animation-delay", (d, i) => (i * 0.05) + "s");
                     
                     node.append("rect")
                         .attr("x", d => d.x0)
@@ -519,20 +711,21 @@ def _render_sankey_diagram(data):
                         .attr("height", d => d.y1 - d.y0)
                         .attr("width", d => d.x1 - d.x0)
                         .attr("fill", d => d.color || '#69b3a2')
+                        .attr("role", "button")
+                        .attr("tabindex", 0)
+                        .attr("aria-label", d => d.name)
                         .on("click", function(event, d) {{
                             event.stopPropagation();
                             
                             link.classed("highlighted", false).classed("dimmed", false);
-                            node.classed("selected", false).classed("dimmed", false);
+                            node.classed("selected", false).classed("dimmed", false).classed("highlighted", false);
                             
                             if (selectedNode === d) {{
                                 selectedNode = null;
-                                link.classed("dimmed", false);
-                                node.classed("dimmed", false);
                             }} else {{
                                 selectedNode = d;
                                 selectedLink = null;
-                                d3.select(this.parentNode).classed("selected", true);
+                                d3.select(this.parentNode).classed("selected", true).classed("highlighted", true);
                                 
                                 link.classed("dimmed", true);
                                 link.filter(l => l.source === d || l.target === d)
@@ -548,98 +741,45 @@ def _render_sankey_diagram(data):
                                     }}
                                 }});
                                 node.classed("dimmed", n => !connectedNodes.has(n));
-                            }}
-                        }})
-                        .on("mouseover", function(event, d) {{
-                            if (!selectedNode && !selectedLink) {{
-                                const nodeValue = d3.sum(graph.links.filter(l => 
-                                    l.source === d || l.target === d
-                                ), l => l.value);
-                                
-                                const tooltipContent = 
-                                    '<div class="tooltip-header">' + d.name + '</div>' +
-                                    '<div class="tooltip-row">' +
-                                        '<span class="tooltip-label">Total Flow:</span>' +
-                                        '<span class="tooltip-value">' + formatCurrency(nodeValue) + '</span>' +
-                                    '</div>' +
-                                    '<div class="tooltip-row">' +
-                                        '<span class="tooltip-label">Percentage:</span>' +
-                                        '<span class="tooltip-value">' + formatPercent(nodeValue) + '</span>' +
-                                    '</div>';
-                                showTooltip(tooltipContent, event);
-                            }}
-                        }})
-                        .on("mousemove", function(event) {{
-                            if (!selectedNode && !selectedLink) {{
-                                tooltip
-                                    .style("left", (event.pageX + 15) + "px")
-                                    .style("top", (event.pageY - 15) + "px");
-                            }}
-                        }})
-                        .on("mouseout", function() {{
-                            if (!selectedNode && !selectedLink) {{
-                                hideTooltip();
+                                node.filter(n => connectedNodes.has(n))
+                                    .classed("highlighted", true);
                             }}
                         }});
                     
                     node.append("foreignObject")
                         .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 210)
-                        .attr("y", d => (d.y1 + d.y0) / 2 - 25)
+                        .attr("y", d => (d.y1 + d.y0) / 2 - 15)
                         .attr("width", 200)
-                        .attr("height", 80)
+                        .attr("height", 50)
+                        .attr("pointer-events", "none")
                         .append("xhtml:div")
                         .attr("class", "node-label")
                         .style("text-align", d => d.x0 < width / 2 ? "left" : "right")
-                        .html(d => {{
-                            const nodeValue = d3.sum(graph.links.filter(l => 
-                                l.source === d || l.target === d
-                            ), l => l.value);
-                            return '<div>' + (d.displayName || d.name) + '</div>' +
-                                '<div class="node-value">' + formatCurrency(nodeValue) + '</div>';
-                        }});
+                        .html(d => '<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (d.displayName || d.name) + '</div>');
                 }}
                 
+                // Render the diagram
                 renderSankey();
+                
+                // Handle window resize
+                let resizeTimer;
+                window.addEventListener('resize', () => {{
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(() => {{
+                        location.reload();
+                    }}, 500);
+                }});
             </script>
         </body>
         </html>
         """
     
-    components.html(html_content, height=1000, scrolling=True)
-
-
-def _render_sankey_summary(df):
-    """
-    Display summary metrics for the Sankey diagram.
-    
-    Args:
-        df (pd.DataFrame): Transactions dataframe
-    """
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total_expenses = abs(df[ColumnNames.AMOUNT].sum())
-    
-    with col1:
-        st.metric("Total Expenses", f"${total_expenses:,.2f}")
-    
-    with col2:
-        num_categories = df[ColumnNames.CATEGORY].nunique()
-        st.metric("Categories", num_categories)
-    
-    with col3:
-        if not df.empty:
-            category_totals = (
-                df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
-                .apply(lambda x: abs(x.sum()))
-                .sort_values(ascending=False)
-            )
-            
-            if not category_totals.empty:
-                largest_category = category_totals.index[0]
-                largest_amount = category_totals.iloc[0]
-                st.metric("Largest category", largest_category)
-                st.caption(f"${largest_amount:,.2f}")
-    
-    with col4:
-        avg_transaction = abs(df[ColumnNames.AMOUNT].mean())
-        st.metric("Avg Transaction", f"${avg_transaction:,.2f}")
+    # Assuming you're using Streamlit
+    try:
+        import streamlit.components.v1 as components
+        components.html(html_content, height=1400, scrolling=True)
+    except ImportError:
+        # If not using Streamlit, save to file or display differently
+        with open('sankey_diagram.html', 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        print("Sankey diagram saved to sankey_diagram.html")
