@@ -23,7 +23,8 @@ from ui.views.expense_tracker_view import show_expense_tracker
 
 # Constants
 APP_TITLE = "Personal Finance Tracker"
-PAGE_ICON = "💰"
+# <a href="https://www.flaticon.com/free-icons/expense" title="expense icons">Expense icons created by rukanicon - Flaticon</a>
+PAGE_ICON = '/data/raw/cash-flow.png'
 LAYOUT = "wide"
 
 # Navigation options

@@ -51,7 +51,7 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
             return [], []
         
         selected_account_types = st.segmented_control(
-            ColumnNames.ACCOUNT_TYPE, 
+            ColumnNames.ACCOUNT_TYPE.title().replace('_', ' '), 
             options=acct_types, 
             selection_mode="multi", 
             default=acct_types,
@@ -69,7 +69,7 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
             return selected_account_types or [], []
         
         selected_categories = st.segmented_control(
-            ColumnNames.CATEGORY, 
+            ColumnNames.CATEGORY.title(), 
             options=categories, 
             selection_mode="multi", 
             default=categories,
