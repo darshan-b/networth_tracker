@@ -63,13 +63,13 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
     period_label = {"Monthly": "Monthly", "Quarterly": "Quarterly", "Yearly": "Yearly"}[comparison_type]
     
     with col1:
-        st.metric("Current Net Worth", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})")
+        st.metric("**Current Net Worth**", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})", border=True)
     with col2:
-        st.metric("Total Change", f"${total_progress:,.0f}", f"{total_progress_pct:,.2f}%")
+        st.metric("**Total Change**", f"${total_progress:,.0f}", f"{total_progress_pct:,.2f}%", border=True)
     with col3:
-        st.metric(f"{period_label.replace('ly', 's')} Tracked", f"{len(month_cols)}")
+        st.metric(f"**{period_label.replace('ly', 's')} Tracked**", f"{len(month_cols)}", border=True, height='stretch')
     with col4:
-        st.metric("Starting Net Worth", f"${first_value:,.0f}")
+        st.metric("**Starting Net Worth**", f"${first_value:,.0f}", border=True, height='stretch')
 
 
 def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
