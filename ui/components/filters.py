@@ -159,11 +159,17 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         with col1:
             if st.button("Select All", use_container_width=True, help="Select all Accounts"):
                 st.session_state.selected_accounts = accounts.copy()
+                # Sync all checkbox states
+                for acc in accounts:
+                    st.session_state[f"check_{acc}"] = True
                 st.rerun()
                 
         with col2:
             if st.button("Clear All", use_container_width=True, help="Deselect all Accounts"):
                 st.session_state.selected_accounts = []
+                # Sync all checkbox states
+                for acc in accounts:
+                    st.session_state[f"check_{acc}"] = False
                 st.rerun()
                 
         with col3:
@@ -187,6 +193,9 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                         current = set(st.session_state.selected_accounts)
                         current.update(accts)
                         st.session_state.selected_accounts = list(current)
+                        # Sync checkbox states for this account type
+                        for acc in accts:
+                            st.session_state[f"check_{acc}"] = True
                         st.rerun()
                         
                 with col2:
@@ -194,6 +203,9 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                         st.session_state.selected_accounts = [
                             a for a in st.session_state.selected_accounts if a not in accts
                         ]
+                        # Sync checkbox states for this account type
+                        for acc in accts:
+                            st.session_state[f"check_{acc}"] = False
                         st.rerun()
                 
                 # Individual account checkboxes
@@ -204,14 +216,12 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                     label = f"{acc} ({trend} ${value:,.0f})" if info else acc
                     is_selected = acc in st.session_state.selected_accounts
                     
-                    if st.checkbox(label, value=is_selected):
+                    if st.checkbox(label, value=is_selected, key=f"check_{acc}"):
                         if acc not in st.session_state.selected_accounts:
                             st.session_state.selected_accounts.append(acc)
-                            st.rerun()
                     else:
                         if acc in st.session_state.selected_accounts:
                             st.session_state.selected_accounts.remove(acc)
-                            st.rerun()
         
         # Summary statistics
         st.sidebar.divider()
