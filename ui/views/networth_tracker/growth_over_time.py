@@ -90,7 +90,7 @@ def show_growth_over_time(filtered_df):
     
     st.divider()
     
-# -------------------------
+    # -------------------------
     # Controls
     # -------------------------
     col1, col2, col3, col4 = st.columns([2, 2, 1.5, 1])
@@ -120,9 +120,9 @@ def show_growth_over_time(filtered_df):
     with col4:
         with st.popover("Settings"):
             st.markdown("### Display Options")
-            show_period_pct = st.checkbox("Show % Change", value=False)
-            highlight_extremes = st.checkbox("Highlight Best/Worst", value=True)
-            show_milestones = st.checkbox("Show Milestones", value=True)
+            show_period_pct = st.checkbox("Show % Change", value=True)
+            highlight_extremes = st.checkbox("Highlight Best/Worst", value=False)
+            show_milestones = st.checkbox("Show Milestones", value=False)
     
     # Map preset to features
     show_trend_line = view_preset in ["With Trend Line"]
