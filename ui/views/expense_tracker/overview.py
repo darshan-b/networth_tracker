@@ -90,22 +90,22 @@ def _render_summary_metrics(summary):
     
     with col1:
         st.metric("Total Spent", f"${summary['total_spent']:,.2f}", border=True, height='stretch')
-        color_widget_text(f"${summary['total_spent']:,.2f}") 
+        # color_widget_text(f"${summary['total_spent']:,.2f}") 
     
     with col2:
         st.metric("Total Income", f"${summary['total_income']:,.2f}", border=True, height='stretch')
-        color_widget_text(f"${summary['total_income']:,.2f}")
+        # color_widget_text(f"${summary['total_income']:,.2f}")
 
     with col3:
         st.metric("Total Savings", f"${summary['total_savings']:,.2f}", delta=f"{summary['savings_rate']}%", border=True, height='stretch')
-        color_widget_text(f"${summary['total_savings']:,.2f}")
+        # color_widget_text(f"${summary['total_savings']:,.2f}")
 
 
     col4, col5, _ = st.columns(3)
-    
+
     with col4:
         st.metric("Total Budget", f"${summary['total_budget']:,.2f}", border=True, height='stretch')
-        color_widget_text(f"${summary['total_budget']:,.2f}") 
+        # color_widget_text(f"${summary['total_budget']:,.2f}") 
     
     with col5:
         remaining = summary['remaining']
@@ -113,10 +113,10 @@ def _render_summary_metrics(summary):
         color = "red" if remaining < 0 else "green"      
         remaining_pct = (remaining / budget * 100) if budget > 0 else 0
         st.metric("Remaining", f"${remaining:,.2f}", delta=f"{remaining_pct:.1f}%", border=True)
-        if remaining < 0:
-            color_widget_text(f"${remaining:,.2f}", '#FF0000') 
-        else:
-            color_widget_text(f"${remaining:,.2f}", '#00B050') 
+        # if remaining < 0:
+        #     color_widget_text(f"${remaining:,.2f}", '#FF0000') 
+        # else:
+        #     color_widget_text(f"${remaining:,.2f}", '#00B050') 
 
 
 def _render_category_pie_chart(df):

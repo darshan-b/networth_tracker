@@ -35,9 +35,15 @@ def render_insights_tab(df):
         st.info("No expense data available for the selected period.")
         return
     
-    # Top merchants analysis
-    _render_top_merchants(df[df[ColumnNames.CATEGORY]!='Income'])
-    
+    col1, col2 = st.columns([0.6, 0.4], border=True)
+    with col1:
+        # Top merchants analysis
+        _render_top_merchants(df[df[ColumnNames.CATEGORY]!='Income'])
+
+    with col2:
+        # Summary statistics
+        _render_summary_statistics(df[df[ColumnNames.CATEGORY]!='Income'])
+
     st.divider()
     
     # Spending patterns
@@ -49,10 +55,7 @@ def render_insights_tab(df):
     with col2:
         _render_avg_transaction_by_category(df[df[ColumnNames.CATEGORY]!='Income'])
     
-    st.divider()
-    
-    # Summary statistics
-    _render_summary_statistics(df[df[ColumnNames.CATEGORY]!='Income'])
+
     
     st.divider()
     
@@ -78,7 +81,7 @@ def _render_top_merchants(df):
         top_subcategories = df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT].sum().apply(_convert_to_absolute).sort_values(ascending=False).head(10).reset_index()
 
         # Pill buttons for selection
-        col1, col2 = st.columns([2, 3])
+        col1, col2 = st.columns([0.33, 0.67])
         with col2:
             selected = st.pills(
                 "View",
@@ -232,35 +235,96 @@ def _render_summary_statistics(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Total Transactions", len(df))
-        avg_amount = abs(df[ColumnNames.AMOUNT].mean())
-        st.metric("Average Transaction", f"${avg_amount:.2f}")
-    
-    with col2:
-        largest_amount = abs(df[ColumnNames.AMOUNT].min())
-        st.metric("Largest Transaction", f"${largest_amount:.2f}")
-        
-        if not df.empty:
-            try:
-                largest = df.loc[df[ColumnNames.AMOUNT].idxmin()]
-                st.caption(f"{largest[ColumnNames.MERCHANT]} - {largest[ColumnNames.CATEGORY]}")
-            except Exception:
-                pass
-    
-    with col3:
-        if not df.empty:
-            try:
-                most_frequent_merchant = df[ColumnNames.MERCHANT].mode()[0]
-                st.metric("Most Frequent Merchant", most_frequent_merchant)
-                
-                most_frequent_category = df[ColumnNames.CATEGORY].mode()[0]
-                st.metric("Most Frequent Category", most_frequent_category)
-            except Exception:
-                st.info("Insufficient data for frequency analysis.")
+    st.header("Summary", divider=True)
 
+    # Calculate some reusable values
+    total_amount = abs(df[ColumnNames.AMOUNT].sum())
+    days_in_period = (df[ColumnNames.DATE].max() - df[ColumnNames.DATE].min()).days + 1
+
+    # Row 1: Core spending metrics
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        with st.container(border=True):
+            st.metric("Total Spend", f"${total_amount:,.2f}")
+
+    with col2:
+        with st.container(border=True):
+            avg_amount = abs(df[ColumnNames.AMOUNT].mean())
+            st.metric("Average Transaction", f"${avg_amount:.2f}")
+
+    with col3:
+        with st.container(border=True):
+            median_amount = abs(df[ColumnNames.AMOUNT].median())
+            st.metric("Median Transaction", f"${median_amount:.2f}")
+
+    # Row 2: Transaction counts and daily average
+    col4, col5 = st.columns(2)
+    with col4:
+        with st.container(border=True):
+            largest_amount = abs(df[ColumnNames.AMOUNT].min())
+            st.metric("Largest Transaction", f"${largest_amount:.2f}")
+            if not df.empty:
+                try:
+                    largest = df.loc[df[ColumnNames.AMOUNT].idxmin()]
+                    st.caption(f"{largest[ColumnNames.MERCHANT]} - {largest[ColumnNames.CATEGORY]}")
+                except Exception:
+                    pass
+
+    with col5:
+        with st.container(border=True):
+            daily_totals = df.groupby(df[ColumnNames.DATE].dt.date)[ColumnNames.AMOUNT].sum().abs()
+            most_expensive_day = daily_totals.idxmax()
+            most_expensive_amount = daily_totals.max()
+            st.metric("Most Expensive Day", most_expensive_day.strftime("%b %d, %Y"))
+            st.caption(f"${most_expensive_amount:,.2f}")
+
+    # Row 4: Category insights
+    col6, col7 = st.columns(2)
+    with col6:
+        with st.container(border=True):
+            if not df.empty:
+                try:
+                    most_frequent_merchant = df[ColumnNames.MERCHANT].mode()[0]
+                    st.metric("Most Frequent Merchant", most_frequent_merchant)
+                except Exception:
+                    st.info("Insufficient data")
+
+    with col7:
+        with st.container(border=True):
+            if not df.empty:
+                try:
+                    most_frequent_category = df[ColumnNames.CATEGORY].mode()[0]
+                    st.metric("Most Frequent Category", most_frequent_category)
+                except Exception:
+                    st.info("Insufficient data")
+
+    col8, col9 = st.columns(2)
+    with col8:
+        # Row 8: Month-over-month change (if applicable)
+        if df[ColumnNames.DATE].dt.month.nunique() > 1:
+            with st.container(border=True):
+                current_month_num = df[ColumnNames.DATE].dt.month.max()
+                current_month = df[df[ColumnNames.DATE].dt.month == current_month_num]
+                prev_month = df[df[ColumnNames.DATE].dt.month == current_month_num - 1]
+                
+                if not prev_month.empty:
+                    current_total = abs(current_month[ColumnNames.AMOUNT].sum())
+                    prev_total = abs(prev_month[ColumnNames.AMOUNT].sum())
+                    change = current_total - prev_total
+                    change_pct = (change / prev_total * 100) if prev_total > 0 else 0
+                    
+                    st.metric("Current Month Spending", f"${current_total:,.2f}",
+                            delta=f"{change_pct:+.1f}% vs previous month", 
+                            delta_color="inverse")
+
+    with col9:
+        with st.container(border=True):
+            top_category = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().idxmax()
+            top_category_amount = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().max()
+            percentage = (top_category_amount / total_amount) * 100
+            st.metric("Top Spending Category", top_category)
+            st.caption(f"{percentage:.1f}% of total (${top_category_amount:,.2f})")
 
 def _render_category_trends(df):
     """

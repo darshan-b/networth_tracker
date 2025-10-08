@@ -19,6 +19,7 @@ from ui.components.filters import (
 )
 from ui.views.networth_tracker_view import show_networth_tracker 
 from ui.views.expense_tracker_view import show_expense_tracker
+# from ui.views.llm_view import render_chat_assistant
 
 # Constants
 APP_TITLE = "Personal Finance Tracker"
@@ -28,6 +29,7 @@ LAYOUT = "wide"
 # Navigation options
 NAV_NETWORTH = "Net Worth Tracker"
 NAV_EXPENSE = "Expense Tracker"
+NAV_CHAT = "Chat Assistant"
 
 
 def render_networth_tracker() -> None:
@@ -108,6 +110,8 @@ def render_expense_tracker() -> None:
 
 def main() -> None:
     """Main application function with error handling and navigation."""
+
+    # Update your main function
     try:
         # Page configuration
         st.set_page_config(
@@ -115,27 +119,30 @@ def main() -> None:
             page_icon=PAGE_ICON,
             layout=LAYOUT
         )
-        
+    
         # Sidebar navigation
         st.sidebar.title("Navigation")
         app_mode = st.sidebar.radio(
             "Select View",
-            [NAV_NETWORTH, NAV_EXPENSE],
-            help="Choose between Net Worth tracking and Expense tracking"
+            [NAV_NETWORTH, NAV_EXPENSE, NAV_CHAT],  # Add NAV_CHAT here
+            help="Choose between Net Worth tracking, Expense tracking, or Chat Assistant"
         )
-        
+    
         st.sidebar.markdown("---")
-        
+    
         # Header
         st.header(APP_TITLE)
-        
+    
         # Route to appropriate view
         if app_mode == NAV_NETWORTH:
             render_networth_tracker()
         elif app_mode == NAV_EXPENSE:
             render_expense_tracker()
+        # elif app_mode == NAV_CHAT:  # Add this
+        #     render_chat_assistant(load_networth_data(), load_expense_transactions())
         else:
-            st.error(f" Unknown view selected: {app_mode}")
+            st.error(f"Unknown view selected: {app_mode}")
+    
             
     except Exception as e:
         st.error(" A critical error occurred. Please refresh the page or contact support.")
