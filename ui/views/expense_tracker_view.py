@@ -26,7 +26,7 @@ TAB_CONFIG = [
     {'name': 'Transactions', 'render_func': render_transactions_tab, 'context': 'transactions'},
     {'name': 'Budgets', 'render_func': None, 'context': 'budgets'},
     {'name': 'Insights', 'render_func': render_insights_tab, 'context': 'insights'},
-    {'name': 'Cash Flow', 'render_func': render_sankey_tab, 'context': 'cash flow'}
+    {'name': 'Sankey Chart', 'render_func': render_sankey_tab, 'context': 'sankey chart'}
 ]
 
 
@@ -132,5 +132,7 @@ def show_expense_tracker(
         safe_render_tab(
             render_sankey_tab,
             df_filtered,
-            error_context="cash flow diagram"
+            budgets,
+            num_months,
+            error_context="sankey flow diagram"
         )

@@ -11,22 +11,28 @@ from constants import ColumnNames
 from data.calculations import calculate_expense_summary
 from ui.views.expense_tracker.overview import _render_summary_metrics
 
-
+# https://pixelied.com/colors/color-palette-generator
 # Color scheme for categories
 CATEGORY_COLORS = {
-    'Total': '#3b82f6',
-    'Housing': '#ef4444',
-    'Utilities': '#f59e0b',
-    'Food & Dining': '#10b981',
-    'Entertainment': '#8b5cf6',
-    'Transportation': '#ec4899',
-    'Miscellaneous': '#6b7280',
+    'Housing':'#4d908e',
+    'Income': '#277da1',
+    'Transportation':'#f94144',
+    'Food & Dining':'#f3722c',
+    'Shopping':'#f8961e',
+    'Medical':'#f9844a', 
+    'Entertainment':'#f9c74f',
+    'Fees':'#90be6d',
+    'Education':'#43aa8b',
+    'Miscellaneous':'#4d908e',
+    'Utilities':'#577590',
+    'Total': '#3b82f6'
 }
+
 
 DEFAULT_COLOR = '#94a3b8'
 
 
-def render_sankey_tab(df):
+def render_sankey_tab(df, budgets, num_months):
     """
     Render the cash flow Sankey diagram tab.
     
@@ -36,12 +42,15 @@ def render_sankey_tab(df):
     Returns:
         None
     """
-    st.subheader("Cash Flow")
+    st.subheader("Sankey Chart")
     
     if df.empty:
         st.info("No transaction data available for the selected period.")
         return
     
+    summary = calculate_expense_summary(df, budgets, num_months)
+    _render_summary_metrics(summary)
+
     # Generate Sankey data
     try:
         sankey_data = _generate_sankey_data(df)
@@ -49,11 +58,7 @@ def render_sankey_tab(df):
     except Exception as e:
         st.error(f"Error generating cash flow diagram: {str(e)}")
         return
-    
-    st.divider()
 
-    summary = calculate_expense_summary(df, budgets, num_months)
-    _render_summary_metrics(summary)
 
 def _generate_sankey_data(df):
     """
