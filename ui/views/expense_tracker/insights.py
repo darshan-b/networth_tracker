@@ -35,6 +35,11 @@ def render_insights_tab(df):
         st.info("No expense data available for the selected period.")
         return
     
+    df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
+    
+    # render cash flow chart
+    _render_cash_flow(df)
+    
     col1, col2 = st.columns([0.6, 0.4], border=True)
     with col1:
         # Top merchants analysis
@@ -44,25 +49,17 @@ def render_insights_tab(df):
         # Summary statistics
         _render_summary_statistics(df[df[ColumnNames.CATEGORY]!='Income'])
 
-    st.divider()
-    
-    # Spending patterns
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        _render_dow_spending(df[df[ColumnNames.CATEGORY]!='Income'])
-    
-    with col2:
-        _render_avg_transaction_by_category(df[df[ColumnNames.CATEGORY]!='Income'])
-    
-
+    # st.divider()
+    # # Spending patterns
+    # col1, col2 = st.columns(2)
+    # with col1:
+    #     _render_dow_spending(df[df[ColumnNames.CATEGORY]!='Income'])
+    # with col2:
+    #     _render_avg_transaction_by_category(df[df[ColumnNames.CATEGORY]!='Income'])
     
     st.divider()
-    
     # category trends over time
     _render_category_trends(df[df[ColumnNames.CATEGORY]!='Income'])
-
-    _render_cash_flow(df)
 
 
 def _render_top_merchants(df):
@@ -326,6 +323,7 @@ def _render_summary_statistics(df):
             st.metric("Top Spending Category", top_category)
             st.caption(f"{percentage:.1f}% of total (${top_category_amount:,.2f})")
 
+
 def _render_category_trends(df):
     """
     Render line chart showing category spending trends over time.
@@ -369,7 +367,7 @@ def _render_cash_flow(df):
     fig = go.Figure()
 
     df['month'] = df[ColumnNames.DATE].dt.to_period('M').astype(str)
-    df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
+
     income = df[df[ColumnNames.CATEGORY]=='Income']
     income = income.groupby(['month'])[ColumnNames.AMOUNT].sum()
 
@@ -384,7 +382,11 @@ def _render_cash_flow(df):
         y=income.values,
         marker_color='rgba(144, 238, 144, 0.9)',
         hovertemplate='Income: %{y:$,.0f}<extra></extra>',
-        name='Income'
+        name='Income',
+        textposition='inside',
+        text = income.values,
+        texttemplate='$%{text:,.0f}',
+        insidetextanchor='start' 
     ))
 
     # Add negative bars (red/pink)
@@ -393,7 +395,11 @@ def _render_cash_flow(df):
         y=expense.values,
         marker_color='rgba(255, 182, 193, 0.9)',
         hovertemplate='Expenses: %{y:$,.0f}<extra></extra>',
-        name='Expenses'
+        name='Expenses',
+        textposition='inside',
+        text = expense.values,
+        texttemplate='$%{text:,.0f}',
+        insidetextanchor='start' 
     ))
 
     # Add solid line for savings
@@ -402,7 +408,7 @@ def _render_cash_flow(df):
         y=savings.values,
         mode='lines+markers',
         name='Savings',
-        line=dict(color='blue', width=2),
+        line=dict(color='blue', width=2, dash='dash'),
         hovertemplate='Savings: %{y:$,.0f}<extra></extra>'
     ))
 
