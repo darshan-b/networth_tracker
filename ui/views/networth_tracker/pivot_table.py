@@ -33,14 +33,14 @@ def color_pct(value):
     return f"<span style='color:{color};'>{arrow} {sign}{value:.2f}%</span>"
 
 
-def add_kpi_metrics(pivot_df, month_cols, comparison_type="month"):
+def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
     """
     Display key net worth metrics in Streamlit.
     
     Args:
         pivot_df (pd.DataFrame): Pivot table including Grand Total row.
-        month_cols (list): List of month column names (already filtered by comparison type).
-        comparison_type (str): "Month", "Quarter", or "Year" for primary comparison.
+        month_cols (list): List of Monthly column names (already filtered by comparison type).
+        comparison_type (str): "Monthly", "Quarter", or "Year" for primary comparison.
     """
     st.markdown("### Key Metrics")
     grand_total_row = pivot_df.iloc[-1]
@@ -59,20 +59,20 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="month"):
     col1, col2, col3, col4 = st.columns(4)
     
     # Update label based on comparison type
-    comparison_label = {"month": "MoM", "Quarterly": "QoQ", "Yearly": "YoY"}[comparison_type]
-    period_label = {"month": "month", "Quarterly": "Quarterly", "Yearly": "Yearly"}[comparison_type]
+    comparison_label = {"Monthly": "MoM", "Quarterly": "QoQ", "Yearly": "YoY"}[comparison_type]
+    period_label = {"Monthly": "Monthly", "Quarterly": "Quarterly", "Yearly": "Yearly"}[comparison_type]
     
     with col1:
         st.metric("Current Net Worth", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})")
     with col2:
         st.metric("Total Change", f"${total_progress:,.0f}", f"{total_progress_pct:,.2f}%")
     with col3:
-        st.metric(f"{period_label}s Tracked", f"{len(month_cols)}")
+        st.metric(f"{period_label.replace('ly', 's')} Tracked", f"{len(month_cols)}")
     with col4:
         st.metric("Starting Net Worth", f"${first_value:,.0f}")
 
 
-def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
+def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
     """
     Create a pivot table from filtered data, optionally rolled up by account_type,
     and add a Grand Total row. Filter columns based on comparison type.
@@ -80,12 +80,12 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
     Args:
         filtered_df (pd.DataFrame): Filtered data containing ColumnNames.ACCOUNT_TYPE, ColumnNames.DATE, 'month_Str', and ColumnNames.AMOUNT.
         rollup (bool): If True, summarize by account_type only. Otherwise, include category.
-        comparison_type (str): "month", "Quarter", or "Year" to determine column intervals.
+        comparison_type (str): "Monthly", "Quarter", or "Year" to determine column intervals.
     
     Returns:
         tuple: (pivot_df, month_cols)
             pivot_df (pd.DataFrame): Pivot table including Grand Total.
-            month_cols (list): Ordered list of month columns (filtered by comparison type).
+            month_cols (list): Ordered list of Monthly columns (filtered by comparison type).
     """
     months_order = filtered_df[[ColumnNames.MONTH, 'month_Str']].drop_duplicates().sort_values(ColumnNames.MONTH)
     all_month_cols = months_order['month_Str'].tolist()
@@ -109,26 +109,26 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
             fill_value=0
         ).reset_index()
 
-    # Reorder columns to match chronological month order
+    # Reorder columns to match chronological Monthly order
     pivot_df = pivot_df[[*pivot_df.columns[:len(pivot_df.columns)-len(all_month_cols)], *all_month_cols]]
 
     # Filter columns based on comparison type (work backwards from most recent)
-    interval_map = {"month": 1, "Quarterly": 3, "Yearly": 12}
+    interval_map = {"Monthly": 1, "Quarterly": 3, "Yearly": 12}
     interval = interval_map[comparison_type]
     
     # Select columns at the specified interval, starting from the most recent
     selected_indices = list(range(len(all_month_cols) - 1, -1, -interval))[::-1]  # Reverse to get chronological order
     
-    # If we don't have enough data and first selected index > 0, include the first month
+    # If we don't have enough data and first selected index > 0, include the first Monthly
     if selected_indices and selected_indices[0] > 0 and len(selected_indices) == 1:
-        selected_indices.insert(0, 0)  # Add first month if we only have one period
+        selected_indices.insert(0, 0)  # Add first Monthly if we only have one period
     elif selected_indices and selected_indices[0] > 0:
         # If first selected index isn't 0, prepend index 0 to include earliest data
         selected_indices.insert(0, 0)
     
     month_cols = [all_month_cols[i] for i in selected_indices]
     
-    # Keep only selected month columns in the pivot table
+    # Keep only selected Monthly columns in the pivot table
     index_cols = [col for col in pivot_df.columns if col not in all_month_cols]
     pivot_df = pivot_df[index_cols + month_cols]
 
@@ -140,14 +140,14 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
     return pivot_df, month_cols
 
 
-def style_grand_total_row(pivot_df, month_cols, comparison_type="month", pos_color="green", neg_color="red", max_lightness=80):
+def style_grand_total_row(pivot_df, month_cols, comparison_type="Monthly", pos_color="green", neg_color="red", max_lightness=80):
     """
     Apply HTML-based red/green gradient styling to the Grand Total row based on period-over-period changes.
 
     Args:
         pivot_df (pd.DataFrame): Pivot table including Grand Total row.
-        month_cols (list): List of month column names in chronological order.
-        comparison_type (str): "month", "Quarter", or "Year" for comparison period.
+        month_cols (list): List of Monthly column names in chronological order.
+        comparison_type (str): "Monthly", "Quarter", or "Year" for comparison period.
         pos_color (str): Color for positive changes.
         neg_color (str): Color for negative changes.
         max_lightness (int): Maximum lightness for color gradient.
@@ -284,7 +284,7 @@ def show_pivot_table(filtered_df):
     is_valid, error_msg = validate_data(filtered_df)
     if not is_valid:
         st.error(f"Data Error: {error_msg}")
-        st.info("Please ensure your data contains: account_type, category, month_Str, amount, and month columns.")
+        st.info("Please ensure your data contains: account_type, category, month_Str, amount, and Monthly columns.")
         st.stop()
     
     # Check if we have enough data
@@ -301,7 +301,7 @@ def show_pivot_table(filtered_df):
     with col2:
         transpose_val = st.checkbox("Transpose pivot table?", value=False)
     with col3:
-        comparison_type = st.selectbox("Comparison Period:", ["month", "Quarterly", "Yearly"], index=0)
+        comparison_type = st.selectbox("Comparison Period:", ["Monthly", "Quarterly", "Yearly"], index=0)
 
     # Create pivot table and compute KPIs
     pivot_df, month_cols = create_pivot_table(filtered_df, rollup_val, comparison_type)
