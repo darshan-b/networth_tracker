@@ -59,8 +59,8 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="month"):
     col1, col2, col3, col4 = st.columns(4)
     
     # Update label based on comparison type
-    comparison_label = {"month": "MoM", "Quarter": "QoQ", "Year": "YoY"}[comparison_type]
-    period_label = {"month": "month", "Quarter": "Quarter", "Year": "Year"}[comparison_type]
+    comparison_label = {"month": "MoM", "Quarterly": "QoQ", "Yearly": "YoY"}[comparison_type]
+    period_label = {"month": "month", "Quarterly": "Quarterly", "Yearly": "Yearly"}[comparison_type]
     
     with col1:
         st.metric("Current Net Worth", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})")
@@ -113,7 +113,7 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="month"):
     pivot_df = pivot_df[[*pivot_df.columns[:len(pivot_df.columns)-len(all_month_cols)], *all_month_cols]]
 
     # Filter columns based on comparison type (work backwards from most recent)
-    interval_map = {"month": 1, "Quarter": 3, "Year": 12}
+    interval_map = {"month": 1, "Quarterly": 3, "Yearly": 12}
     interval = interval_map[comparison_type]
     
     # Select columns at the specified interval, starting from the most recent
@@ -301,7 +301,7 @@ def show_pivot_table(filtered_df):
     with col2:
         transpose_val = st.checkbox("Transpose pivot table?", value=False)
     with col3:
-        comparison_type = st.selectbox("Comparison Period:", ["month", "Quarter", "Year"], index=0)
+        comparison_type = st.selectbox("Comparison Period:", ["month", "Quarterly", "Yearly"], index=0)
 
     # Create pivot table and compute KPIs
     pivot_df, month_cols = create_pivot_table(filtered_df, rollup_val, comparison_type)
