@@ -279,7 +279,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         KeyError: If required columns are missing
     """
     try:
-        st.sidebar.markdown("### 📅 Date Range Filter")
+        st.markdown("### 📅 Date Range Filter")
         
         # Validate input
         if df is None or df.empty:
@@ -291,7 +291,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             return pd.DataFrame(), 1, 1
         
         # Date range selector
-        date_option = st.sidebar.selectbox(
+        date_option = st.selectbox(
             "Select Period",
             get_date_range_options(),
             key="global_date_filter",
@@ -300,7 +300,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         
         # Handle custom range with UI inputs
         if date_option == DATE_RANGE_CUSTOM:
-            col_start, col_end = st.sidebar.columns(2)
+            col_start, col_end = st.columns(2)
             with col_start:
                 start_date = st.date_input(
                     "Start date",
@@ -348,7 +348,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             date_range_days = (df_filtered[ColumnNames.DATE].max() - df_filtered[ColumnNames.DATE].min()).days + 1
             
             # Display date range info
-            st.sidebar.info(
+            st.info(
                 f"📊 Showing data from **{df_filtered[ColumnNames.DATE].min().strftime('%Y-%m-%d')}** "
                 f"to **{df_filtered[ColumnNames.DATE].max().strftime('%Y-%m-%d')}**\n\n"
                 f"({date_range_days} days, {num_months} months)"
