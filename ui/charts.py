@@ -136,7 +136,7 @@ def create_pie_chart(
         ),
         textposition='inside',
         textinfo='percent',
-        hovertemplate='<span style="color:black;"><b>%{label}</b><br>Amount: $%{value:,.0f}<br>As Percent: %{percent}</span>',
+        hovertemplate='<b>%{label}</b><br>Amount: $%{value:,.0f}<br>As Percent: %{percent}',
         insidetextorientation='radial'
     ))
     
