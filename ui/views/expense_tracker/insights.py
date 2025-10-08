@@ -369,7 +369,7 @@ def _render_cash_flow(df):
     fig = go.Figure()
 
     df['month'] = df[ColumnNames.DATE].dt.to_period('M').astype(str)
-
+    df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
     income = df[df[ColumnNames.CATEGORY]=='Income']
     income = income.groupby(['month'])[ColumnNames.AMOUNT].sum()
 
