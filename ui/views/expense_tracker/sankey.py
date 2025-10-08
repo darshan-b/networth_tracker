@@ -48,6 +48,7 @@ def render_sankey_tab(df, budgets, num_months):
         st.info("No transaction data available for the selected period.")
         return
     
+    df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
     summary = calculate_expense_summary(df, budgets, num_months)
     _render_summary_metrics(summary)
 
