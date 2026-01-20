@@ -89,7 +89,7 @@ def get_filtered_accounts(data: pd.DataFrame, account_types: List[str], categori
         
     except Exception as e:
         st.error(f" Error getting filtered accounts: {str(e)}")
-        raise
+        raise    
 
 
 # Expense Tracker Filtering Functions

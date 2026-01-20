@@ -1,10 +1,11 @@
 """UI components for filters in the Personal Finance Tracker.
 
 This module handles all user interface components for filtering data in both
-Net Worth and Expense tracking views, with comprehensive error handling.
+Net Worth, Expense, and Stock tracking views, with comprehensive error handling.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -40,14 +41,14 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
         missing_columns = [col for col in required_columns if col not in data.columns]
         
         if missing_columns:
-            st.error(f" Data is missing required columns: {', '.join(missing_columns)}")
+            st.error(f"Data is missing required columns: {', '.join(missing_columns)}")
             return [], []
         
         # Render account_type filter
         acct_types = sorted(data[ColumnNames.ACCOUNT_TYPE].unique())
         
         if not acct_types:
-            st.warning(" No Account Type found in data.")
+            st.warning("No Account Type found in data.")
             return [], []
         
         selected_account_types = st.segmented_control(
@@ -65,7 +66,7 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
             categories = sorted(data[ColumnNames.CATEGORY].unique())
         
         if not categories:
-            st.warning(" No Categories available for the selected Account Type.")
+            st.warning("No Categories available for the selected Account Type.")
             return selected_account_types or [], []
         
         selected_categories = st.segmented_control(
@@ -79,11 +80,15 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
         return selected_account_types or [], selected_categories or []
         
     except Exception as e:
-        st.error(f" Error rendering filters: {str(e)}")
+        st.error(f"Error rendering filters: {str(e)}")
         return [], []
 
 
-def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], account_info: Dict[str, Dict]) -> List[str]:
+def render_networth_sidebar_filters(
+    data: pd.DataFrame, 
+    accounts: List[str], 
+    account_info: Dict[str, Dict]
+) -> List[str]:
     """Render sidebar with account selection and search for Net Worth Tracker.
     
     Args:
@@ -102,11 +107,11 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         
         # Validate inputs
         if data is None or data.empty:
-            st.sidebar.error(" No data available.")
+            st.sidebar.error("No data available.")
             return []
         
         if not accounts:
-            st.sidebar.warning(" No Accounts available to display.")
+            st.sidebar.warning("No Accounts available to display.")
             return []
         
         # Initialize session state
@@ -128,7 +133,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         if search:
             filtered_accounts = [a for a in accounts if search.lower() in a.lower()]
             if not filtered_accounts:
-                st.sidebar.warning(f" No Accounts match '{search}'")
+                st.sidebar.warning(f"No Accounts match '{search}'")
         else:
             filtered_accounts = accounts
         
@@ -141,7 +146,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
             grouped_accounts[acct_type].append(acc)
         
         if not grouped_accounts:
-            st.sidebar.warning(" No Accounts to display.")
+            st.sidebar.warning("No Accounts to display.")
             return []
         
         # Initialize expander states for new account_types
@@ -159,7 +164,6 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         with col1:
             if st.button("Select All", use_container_width=True, help="Select all Accounts"):
                 st.session_state.selected_accounts = accounts.copy()
-                # Sync all checkbox states
                 for acc in accounts:
                     st.session_state[f"check_{acc}"] = True
                 st.rerun()
@@ -167,7 +171,6 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         with col2:
             if st.button("Clear All", use_container_width=True, help="Deselect all Accounts"):
                 st.session_state.selected_accounts = []
-                # Sync all checkbox states
                 for acc in accounts:
                     st.session_state[f"check_{acc}"] = False
                 st.rerun()
@@ -193,7 +196,6 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                         current = set(st.session_state.selected_accounts)
                         current.update(accts)
                         st.session_state.selected_accounts = list(current)
-                        # Sync checkbox states for this account type
                         for acc in accts:
                             st.session_state[f"check_{acc}"] = True
                         st.rerun()
@@ -203,7 +205,6 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                         st.session_state.selected_accounts = [
                             a for a in st.session_state.selected_accounts if a not in accts
                         ]
-                        # Sync checkbox states for this account type
                         for acc in accts:
                             st.session_state[f"check_{acc}"] = False
                         st.rerun()
@@ -240,9 +241,9 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
             
             # Display selection status
             if count == total:
-                st.sidebar.success(f" {count} of {total} selected")
+                st.sidebar.success(f"{count} of {total} selected")
             else:
-                st.sidebar.info(f" {count} of {total} selected")
+                st.sidebar.info(f"{count} of {total} selected")
             
             # Display value metrics
             col1, col2 = st.sidebar.columns(2)
@@ -252,7 +253,7 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
                 pct = (selected_value / total_value * 100) if total_value != 0 else 0
                 st.metric("% of Total", f"{pct:.1f}%")
         else:
-            st.sidebar.error(" No Accounts selected")
+            st.sidebar.error("No Accounts selected")
         
         # Search results info
         if search:
@@ -261,8 +262,205 @@ def render_networth_sidebar_filters(data: pd.DataFrame, accounts: List[str], acc
         return st.session_state.selected_accounts
         
     except Exception as e:
-        st.sidebar.error(f" Error rendering Account filters: {str(e)}")
+        st.sidebar.error(f"Error rendering Account filters: {str(e)}")
         return []
+
+
+def render_stock_header_filters(
+    historical_df: pd.DataFrame
+) -> Tuple[List[str], List[str], List[str]]:
+    """Render Brokerage, Account Name, and Investment Type segmented controls for Stock Tracker.
+    
+    Args:
+        historical_df: Historical tracking DataFrame with Brokerage, Account Name, Investment Type columns
+        
+    Returns:
+        Tuple of (selected_brokerages, selected_accounts, selected_investment_types)
+    """
+    try:
+        # Validate input
+        if historical_df is None or historical_df.empty:
+            st.error("No historical data available.")
+            return [], [], []
+        
+        # Get latest data for currently owned positions
+        # latest_data = historical_df.sort_values('Date').groupby('ticker').last().reset_index()
+        # currently_owned = latest_data[latest_data['quantity'] > 0].copy()
+        latest_data = historical_df.sort_values('Date').groupby(['ticker', 'Brokerage', 'Account Name', 'Investment Type']).last().reset_index()
+        currently_owned = latest_data[latest_data['quantity'] > 0].copy()
+        
+        if currently_owned.empty:
+            st.warning("No positions currently held.")
+            return [], [], []
+        
+        # Render Brokerage filter
+        if 'Brokerage' in currently_owned.columns:
+            all_brokerages = sorted(currently_owned['Brokerage'].dropna().unique())
+        else:
+            st.warning("Brokerage column not found in historical data.")
+            all_brokerages = []
+        
+        if all_brokerages:
+            selected_brokerages = st.segmented_control(
+                "Brokerage",
+                options=all_brokerages,
+                selection_mode="multi",
+                default=all_brokerages,
+                help="Filter by brokerage firm"
+            )
+        else:
+            selected_brokerages = []
+        
+        # Filter data for next dropdown based on brokerage selection
+        if selected_brokerages:
+            filtered_for_accounts = currently_owned[
+                currently_owned['Brokerage'].isin(selected_brokerages)
+            ]
+        else:
+            filtered_for_accounts = currently_owned
+        
+        # Render Account Name filter
+        if 'Account Name' in filtered_for_accounts.columns:
+            all_accounts = sorted(filtered_for_accounts['Account Name'].dropna().unique())
+            # st.write(all_accounts, historical_df.groupby(['Brokerage'])['Account Name'].unique(), 
+            # currently_owned.groupby(['Brokerage'])['Account Name'].unique(), selected_brokerages,
+            # latest_data)
+        else:
+            st.warning("Account Name column not found in historical data.")
+            all_accounts = []
+        
+        if all_accounts:
+            selected_accounts = st.segmented_control(
+                "Account Name",
+                options=all_accounts,
+                selection_mode="multi",
+                default=all_accounts,
+                help="Filter by account type (e.g., 401k, IRA, Taxable)"
+            )
+        else:
+            selected_accounts = []
+        
+        # Filter data for investment type based on brokerage and account selection
+        if selected_brokerages and selected_accounts:
+            filtered_for_types = currently_owned[
+                (currently_owned['Brokerage'].isin(selected_brokerages)) &
+                (currently_owned['Account Name'].isin(selected_accounts))
+            ]
+        elif selected_brokerages:
+            filtered_for_types = currently_owned[
+                currently_owned['Brokerage'].isin(selected_brokerages)
+            ]
+        elif selected_accounts:
+            filtered_for_types = currently_owned[
+                currently_owned['Account Name'].isin(selected_accounts)
+            ]
+        else:
+            filtered_for_types = currently_owned
+        
+        # Render Investment Type filter
+        if 'Investment Type' in filtered_for_types.columns:
+            all_types = sorted(filtered_for_types['Investment Type'].dropna().unique())
+        else:
+            st.warning("Investment Type column not found in historical data.")
+            all_types = []
+        
+        if all_types:
+            selected_types = st.segmented_control(
+                "Investment Type",
+                options=all_types,
+                selection_mode="multi",
+                default=all_types,
+                help="Filter by investment type (e.g., Stock, ETF, Bond)"
+            )
+        else:
+            selected_types = []
+        
+        return selected_brokerages or [], selected_accounts or [], selected_types or []
+        
+    except Exception as e:
+        st.error(f"Error rendering header filters: {str(e)}")
+        return [], [], []
+
+
+def render_stock_sidebar_filters(
+    historical_df: pd.DataFrame,
+    selected_brokerages: List[str],
+    selected_accounts: List[str],
+    selected_types: List[str]
+) -> Tuple[datetime, datetime]:
+    """Render sidebar filters for Stock Tracker (date range and summary).
+    
+    Args:
+        historical_df: Historical tracking DataFrame
+        selected_brokerages: List of brokerages selected in header
+        selected_accounts: List of accounts selected in header
+        selected_types: List of investment types selected in header
+        
+    Returns:
+        Tuple of (start_date, end_date)
+    """
+    try:
+        st.sidebar.markdown("### Date Range Filter")
+        
+        # Validate inputs
+        if historical_df is None or historical_df.empty:
+            st.sidebar.error("No historical data available.")
+            return (None, None)
+        
+        # Date range filter
+        min_date = historical_df['Date'].min().date()
+        max_date = historical_df['Date'].max().date()
+        
+        date_range = st.sidebar.date_input(
+            "Select Period",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+            key="stock_date_range",
+            help="Choose date range for analysis"
+        )
+        
+        # Validate date range
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            if start_date > end_date:
+                st.sidebar.warning("Start date is after end date. Using full range.")
+                date_range = (min_date, max_date)
+        else:
+            date_range = (min_date, max_date)
+        
+        # Display filter summary
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### Active Filters")
+        
+        col1, col2, col3 = st.sidebar.columns(3)
+        
+        with col1:
+            st.metric("Brokerages", len(selected_brokerages))
+        
+        with col2:
+            st.metric("Accounts", len(selected_accounts))
+        
+        with col3:
+            st.metric("Types", len(selected_types))
+        
+        # Show date range info
+        if len(date_range) == 2:
+            days = (date_range[1] - date_range[0]).days + 1
+            st.sidebar.caption(f"📅 {days} days selected")
+        
+        # Show sold positions info
+        latest_data = historical_df.sort_values('Date').groupby('ticker').last().reset_index()
+        sold_symbols = latest_data[latest_data['quantity'] == 0]['ticker'].unique()
+        if len(sold_symbols) > 0:
+            with st.sidebar.expander("Sold Positions (Not Displayed)"):
+                st.write(", ".join(sorted(sold_symbols)))
+        
+        return date_range
+        
+    except Exception as e:
+        st.sidebar.error(f"Error rendering date filter: {str(e)}")
+        return (None, None)
 
 
 def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int]:
@@ -283,11 +481,11 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         
         # Validate input
         if df is None or df.empty:
-            st.sidebar.error(" No expense data available.")
+            st.sidebar.error("No expense data available.")
             return pd.DataFrame(), 1, 1
         
         if ColumnNames.DATE not in df.columns:
-            st.sidebar.error(" Date information missing from expense data.")
+            st.sidebar.error("Date information missing from expense data.")
             return pd.DataFrame(), 1, 1
         
         # Date range selector
@@ -325,7 +523,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             end_date = pd.to_datetime(end_date)
             # Validate custom date range
             if start_date > end_date:
-                st.sidebar.warning(" Start date is after end date. Swapping dates.")
+                st.sidebar.warning("Start date is after end date. Swapping dates.")
                 start_date, end_date = end_date, start_date
             
             df_filtered = filter_by_date_range(df, start_date, end_date)
@@ -356,10 +554,10 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         else:
             num_months = 1
             date_range_days = 1
-            st.sidebar.warning(" No data found in the selected date range.")
+            st.sidebar.warning("No data found in the selected date range.")
         
         return df_filtered, num_months, date_range_days
         
     except Exception as e:
-        st.sidebar.error(f" Error applying date filter: {str(e)}")
+        st.sidebar.error(f"Error applying date filter: {str(e)}")
         return pd.DataFrame(), 1, 1

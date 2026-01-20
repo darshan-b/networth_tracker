@@ -1,15 +1,19 @@
 """Main application entry point for Personal Finance Tracker.
 
 This module serves as the main entry point for the Personal Finance Tracker application,
-handling navigation between Net Worth Tracker and Expense Tracker views.
+handling navigation between Net Worth Tracker, Expense Tracker, and Stock Tracker views.
 """
 
 from typing import Optional
 
 import streamlit as st
-from pygwalker.api.streamlit import StreamlitRenderer
 
-from data.loader import load_networth_data, load_expense_transactions, load_budgets
+from data.loader import (
+    load_networth_data, 
+    load_expense_transactions, 
+    load_budgets, 
+    load_stock_data
+)
 from data.filters import filter_data, get_filtered_accounts
 from data.calculations import calculate_account_info
 from ui.components.filters import (
@@ -19,17 +23,17 @@ from ui.components.filters import (
 )
 from ui.views.networth_tracker_view import show_networth_tracker 
 from ui.views.expense_tracker_view import show_expense_tracker
-# from ui.views.llm_view import render_chat_assistant
+from ui.views.stock_tracker_view import show_stock_tracker
 
 # Constants
 APP_TITLE = "Personal Finance Tracker"
-# <a href="https://www.flaticon.com/free-icons/expense" title="expense icons">Expense icons created by rukanicon - Flaticon</a>
 PAGE_ICON = '/data/raw/cash-flow.png'
 LAYOUT = "wide"
 
 # Navigation options
 NAV_NETWORTH = "Net Worth Tracker"
 NAV_EXPENSE = "Expense Tracker"
+NAV_STOCK = "Stock Tracker"
 NAV_CHAT = "Chat Assistant"
 
 
@@ -90,29 +94,45 @@ def render_expense_tracker() -> None:
         budgets = load_budgets()
         
         if df is None or df.empty:
-            st.warning(" No expense data available. Please check your data source.")
+            st.warning("No expense data available. Please check your data source.")
             return
         
         # Render date filter in sidebar and get filtered data
         df_filtered, num_months, date_range_days = render_expense_date_filter(df)
         
         if df_filtered.empty:
-            st.warning(" No expenses found for the selected date range.")
+            st.warning("No expenses found for the selected date range.")
             return
         
         # Show expense tracker with filtered data
         show_expense_tracker(df_filtered, budgets, num_months)
         
     except Exception as e:
-        st.error(f" An error occurred while loading the Expense Tracker: {str(e)}")
+        st.error(f"An error occurred while loading the Expense Tracker: {str(e)}")
+        with st.expander("Error Details"):
+            st.exception(e)
+
+
+def render_stock_tracker() -> None:
+    """Render the Stock Tracker view with error handling."""
+    try:
+        # Load only historical and trading_log - no summary or tracking needed
+        trading_log, historical = load_stock_data()
+        
+        if historical is None or historical.empty:
+            st.error("Failed to load historical data. Please check your data source.")
+            return
+        
+        show_stock_tracker(trading_log, historical)
+        
+    except Exception as e:
+        st.error(f"An error occurred while loading the Stock Tracker: {str(e)}")
         with st.expander("Error Details"):
             st.exception(e)
 
 
 def main() -> None:
     """Main application function with error handling and navigation."""
-
-    # Update your main function
     try:
         # Page configuration
         st.set_page_config(
@@ -125,8 +145,8 @@ def main() -> None:
         st.sidebar.title("Navigation")
         app_mode = st.sidebar.radio(
             "Select View",
-            [NAV_NETWORTH, NAV_EXPENSE, NAV_CHAT],  # Add NAV_CHAT here
-            help="Choose between Net Worth tracking, Expense tracking, or Chat Assistant"
+            [NAV_NETWORTH, NAV_EXPENSE, NAV_STOCK],
+            help="Choose between Net Worth tracking, Expense tracking, or Stock portfolio analysis"
         )
     
         st.sidebar.markdown("---")
@@ -139,14 +159,13 @@ def main() -> None:
             render_networth_tracker()
         elif app_mode == NAV_EXPENSE:
             render_expense_tracker()
-        # elif app_mode == NAV_CHAT:  # Add this
-        #     render_chat_assistant(load_networth_data(), load_expense_transactions())
+        elif app_mode == NAV_STOCK:
+            render_stock_tracker()
         else:
             st.error(f"Unknown view selected: {app_mode}")
     
-            
     except Exception as e:
-        st.error(" A critical error occurred. Please refresh the page or contact support.")
+        st.error("A critical error occurred. Please refresh the page or contact support.")
         with st.expander("Error Details"):
             st.exception(e)
 

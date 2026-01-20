@@ -46,7 +46,7 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
 
 
 @st.cache_data
-def load_expense_transactions(filename: str = 'transactions.csv') -> pd.DataFrame:
+def load_expense_transactions(filename: str = 'transactions.xlsx') -> pd.DataFrame:
     """Load transaction data from CSV file.
     
     Args:
@@ -58,7 +58,7 @@ def load_expense_transactions(filename: str = 'transactions.csv') -> pd.DataFram
     filepath = RAW_DATA_DIR / filename
     
     try:
-        df = pd.read_csv(filepath)
+        df = pd.read_excel(filepath)
         df[ColumnNames.DATE] = pd.to_datetime(df[ColumnNames.DATE])
         
         # Add 'type' column if it doesn't exist
@@ -107,6 +107,29 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
     
     # Return defaults if no file found
     return _get_default_budgets()
+
+
+@st.cache_data
+def load_stock_data(filename:str = 'stock_positions.xlsx') -> pd.DataFrame:
+    """Load all sheets from the Excel file."""
+    file_path = RAW_DATA_DIR / filename
+    
+    try:
+        trading_log = pd.read_excel(file_path, sheet_name='trading_log')
+        try:
+            historical = pd.read_excel(file_path, sheet_name='Historical_Tracking')
+        except:
+            historical = pd.DataFrame()
+        
+        # Convert dates
+        trading_log['Date'] = pd.to_datetime(trading_log['Date'])
+        if not historical.empty:
+            historical['Date'] = pd.to_datetime(historical['Date'])
+        
+        return trading_log, historical
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, None
 
 
 # if you don't want to provide a file for budget set it here with whatever categories you have

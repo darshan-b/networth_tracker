@@ -8,6 +8,7 @@ from config import ChartConfig, ColorSchemes
 import plotly.io as pio
 pio.templates.default = 'plotly_dark' 
 from constants import ColumnNames
+import yfinance as yf
 
 def create_bar_chart(
     data: pd.Series,
@@ -380,6 +381,296 @@ def create_top_accounts_chart(top_accounts):
     fig.update_traces(
         customdata=top_accounts[ColumnNames.CATEGORY].values,
         hovertemplate='<b>%{y}</b><br>amount: $%{x:,.0f}<br>category: %{customdata}<extra></extra>'
+    )
+    
+    return fig
+
+def create_portfolio_value_chart(df, date_col='Date', value_col='Current Value'):
+    """Create portfolio value over time chart."""
+    fig = go.Figure()
+    
+    df_sorted = df.sort_values(date_col)
+    
+    fig.add_trace(go.Scatter(
+        x=df_sorted[date_col],
+        y=df_sorted[value_col],
+        mode='lines',
+        name='Portfolio Value',
+        line=dict(color='#1f77b4', width=2),
+        fill='tozeroy',
+        fillcolor='rgba(31, 119, 180, 0.1)'
+    ))
+    
+    fig.update_layout(
+        title='Portfolio Value Over Time',
+        xaxis_title='Date',
+        yaxis_title='Value ($)',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_allocation_chart(latest_df):
+    """Create asset allocation pie chart from historical data."""
+    allocation = latest_df[latest_df['Current Value'] > 0].copy()
+    allocation = allocation.sort_values('Current Value', ascending=False)
+    
+    fig = px.pie(
+        allocation,
+        values='Current Value',
+        names='ticker',
+        title='Asset Allocation by Current Value',
+        hole=0.4
+    )
+    
+    fig.update_traces(textposition='inside', textinfo='percent+label')
+    fig.update_layout(height=400)
+    
+    return fig
+
+def create_gain_loss_chart(latest_df):
+    """Create gain/loss bar chart by symbol from historical data."""
+    data = latest_df[latest_df['quantity'] > 0].copy()
+    data = data.sort_values('Total Gain/Loss')
+    
+    colors = ['red' if x < 0 else 'green' for x in data['Total Gain/Loss']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=data['ticker'],
+        y=data['Total Gain/Loss'],
+        marker_color=colors,
+        text=data['Total Gain/Loss'].apply(lambda x: f'${x:,.2f}'),
+        textposition='outside'
+    ))
+    
+    fig.update_layout(
+        title='Gain/Loss by Symbol',
+        xaxis_title='ticker',
+        yaxis_title='Gain/Loss ($)',
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_performance_comparison(df, symbols):
+    """Create normalized performance comparison chart."""
+    fig = go.Figure()
+    
+    for symbol in symbols:
+        symbol_data = df[df['ticker'] == symbol].sort_values('Date')
+        if len(symbol_data) > 0:
+            normalized = (symbol_data['Last Close'] / symbol_data['Last Close'].iloc[0]) * 100
+            
+            fig.add_trace(go.Scatter(
+                x=symbol_data['Date'],
+                y=normalized,
+                mode='lines',
+                name=symbol
+            ))
+    
+    fig.update_layout(
+        title='Normalized Performance Comparison (Base 100)',
+        xaxis_title='Date',
+        yaxis_title='Normalized Value',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_correlation_heatmap(df):
+    """Create correlation heatmap for portfolio symbols."""
+    price_pivot = df.pivot_table(
+        index='Date',
+        columns='ticker',
+        values='Last Close'
+    )
+    
+    returns = price_pivot.pct_change().dropna()
+    correlation = returns.corr()
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=correlation.values,
+        x=correlation.columns,
+        y=correlation.index,
+        colorscale='RdBu',
+        zmid=0,
+        text=correlation.values.round(2),
+        texttemplate='%{text}',
+        textfont={"size": 10},
+        colorbar=dict(title="Correlation")
+    ))
+    
+    fig.update_layout(
+        title='Asset Correlation Matrix',
+        height=500,
+        template='plotly_white'
+    )
+    
+    return fig
+
+def create_drawdown_chart(df, date_col='Date', value_col='Current Value'):
+    """Create drawdown chart."""
+    df = df.sort_values(date_col)
+    cumulative = df[value_col] / df[value_col].iloc[0]
+    running_max = cumulative.expanding().max()
+    drawdown = (cumulative - running_max) / running_max * 100
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df[date_col],
+        y=drawdown,
+        mode='lines',
+        name='Drawdown',
+        fill='tozeroy',
+        line=dict(color='red')
+    ))
+    
+    fig.update_layout(
+        title='Portfolio Drawdown',
+        xaxis_title='Date',
+        yaxis_title='Drawdown (%)',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_transaction_timeline(trading_log_df):
+    """Create transaction timeline."""
+    fig = go.Figure()
+    
+    for trans_type in trading_log_df['Transaction Type'].unique():
+        df_type = trading_log_df[trading_log_df['Transaction Type'] == trans_type]
+        
+        fig.add_trace(go.Scatter(
+            x=df_type['Date'],
+            y=df_type['Amount'],
+            mode='markers',
+            name=trans_type,
+            marker=dict(size=10),
+            text=df_type['ticker'],
+            hovertemplate='<b>%{text}</b><br>Date: %{x}<br>Amount: $%{y:,.2f}<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        title='Transaction Timeline',
+        xaxis_title='Date',
+        yaxis_title='Amount ($)',
+        hovermode='closest',
+        template='plotly_white',
+        height=400
+    )
+    
+    return fig
+
+def create_cost_basis_comparison(historical_df):
+    """Create cost basis vs current value vs S&P 500 comparison chart.
+    S&P 500 shows what portfolio would be worth if same investments were made in S&P 500."""
+    
+    daily_totals = historical_df.groupby('Date').agg({
+        'Current Value': 'sum',
+        'Cost Basis': 'sum'
+    }).reset_index().sort_values('Date')
+    
+    if daily_totals.empty or len(daily_totals) < 2:
+        return None
+    
+    fig = go.Figure()
+    
+    # Add Cost Basis
+    fig.add_trace(go.Scatter(
+        x=daily_totals['Date'],
+        y=daily_totals['Cost Basis'],
+        mode='lines',
+        name='Cost Basis (Total Invested)',
+        line=dict(color='orange', dash='dash', width=2)
+    ))
+    
+    # Add Current Value
+    fig.add_trace(go.Scatter(
+        x=daily_totals['Date'],
+        y=daily_totals['Current Value'],
+        mode='lines',
+        name='Portfolio Value',
+        line=dict(color='green', width=2)
+    ))
+    
+    # Calculate S&P 500 equivalent investment
+    start_date = daily_totals['Date'].min()
+    end_date = daily_totals['Date'].max()
+    
+    try:
+        # Fetch S&P 500 historical data
+        sp500 = yf.Ticker("^GSPC")
+        sp500_hist = sp500.history(start=start_date, end=end_date)
+        
+        if not sp500_hist.empty:
+            # Prepare S&P 500 price data
+            sp500_prices = pd.DataFrame({
+                'Date': pd.to_datetime(sp500_hist.index).tz_localize(None),
+                'Close': sp500_hist['Close'].values
+            })
+            
+            # Calculate cost basis changes (new investments)
+            daily_totals['Cost_Change'] = daily_totals['Cost Basis'].diff().fillna(daily_totals['Cost Basis'])
+            
+            # Simulate S&P 500 investment
+            sp500_shares = 0
+            sp500_values = []
+            
+            for _, row in daily_totals.iterrows():
+                date = row['Date']
+                cost_change = row['Cost_Change']
+                
+                # Get S&P 500 price for this date
+                sp500_price_row = sp500_prices[sp500_prices['Date'] == date]
+                
+                if not sp500_price_row.empty:
+                    sp500_price = sp500_price_row['Close'].iloc[0]
+                    
+                    # If new money was invested, buy S&P 500 shares
+                    if cost_change > 0:
+                        sp500_shares += cost_change / sp500_price
+                    
+                    # Calculate current S&P 500 portfolio value
+                    sp500_value = sp500_shares * sp500_price
+                    sp500_values.append({'Date': date, 'Value': sp500_value})
+            
+            if sp500_values:
+                sp500_df = pd.DataFrame(sp500_values)
+                
+                fig.add_trace(go.Scatter(
+                    x=sp500_df['Date'],
+                    y=sp500_df['Value'],
+                    mode='lines',
+                    name='S&P 500 (If Invested Same Amounts)',
+                    line=dict(color='blue', width=2, dash='dot')
+                ))
+    except Exception as e:
+        print(f"Error calculating S&P 500 comparison: {e}")
+    
+    fig.update_layout(
+        title='Portfolio Performance vs Cost Basis vs S&P 500',
+        xaxis_title='Date',
+        yaxis_title='Value ($)',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01
+        )
     )
     
     return fig

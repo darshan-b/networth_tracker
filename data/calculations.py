@@ -7,6 +7,7 @@ expenses, budgets, and trends.
 from typing import Dict, List, Optional, Any
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 from constants import AccountTypes, ColumnNames
@@ -535,3 +536,40 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
     category_monthly[ColumnNames.AMOUNT] = category_monthly[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     
     return category_monthly
+
+
+def calculate_portfolio_metrics_from_historical(latest_df, summary_df):
+    """Calculate key portfolio metrics from historical tracking data, filtered by current ownership."""
+    # Get currently owned symbols from Summary
+    currently_owned = summary_df[summary_df['Quantity'] > 0]['ticker'].tolist()
+    
+    # Filter to only currently owned positions
+    latest_owned = latest_df[latest_df['ticker'].isin(currently_owned)]
+    st.info('her')
+    
+    total_value = latest_owned['Current Value'].sum()
+    total_cost = latest_owned['Cost Basis'].sum()
+    total_gain_loss = latest_owned['Total Gain/Loss'].sum()
+    total_gain_loss_pct = (total_gain_loss / total_cost * 100) if total_cost > 0 else 0
+    
+    return {
+        'total_value': total_value,
+        'total_cost': total_cost,
+        'total_gain_loss': total_gain_loss,
+        'total_gain_loss_pct': total_gain_loss_pct
+    }
+
+def calculate_returns(df, date_col='Date', value_col='Current Value'):
+    """Calculate daily and cumulative returns."""
+    df = df.sort_values(date_col)
+    df['Daily Return'] = df[value_col].pct_change()
+    df['Cumulative Return'] = (1 + df['Daily Return']).cumprod() - 1
+    return df
+
+def aggregate_portfolio_daily(historical_df):
+    """Aggregate historical tracking data to portfolio level."""
+    return historical_df.groupby('Date').agg({
+        'Current Value': 'sum',
+        'Cost Basis': 'sum',
+        'Total Gain/Loss': 'sum'
+    }).reset_index()
