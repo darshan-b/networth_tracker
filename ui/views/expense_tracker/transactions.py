@@ -131,7 +131,7 @@ def _apply_transaction_filters(df):
         ]
     
     # Clear filters button
-    if st.button("Reset All Filters", use_container_width=False):
+    if st.button("Reset All Filters", width="content"):
         st.session_state.filter_reset_counter += 1
         st.rerun()
     
@@ -162,7 +162,7 @@ def _render_transaction_table(df_filtered):
     
     st.dataframe(
         df_display[[ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, 'display_amount']],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             ColumnNames.DATE: st.column_config.DateColumn(
@@ -326,3 +326,4 @@ def _render_pivot_table(df_display):
 
     # Display
     components.html(html_code, height=500, scrolling=True)
+

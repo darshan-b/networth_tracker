@@ -352,7 +352,7 @@ def show_growth_projections(filtered_df):
     
     # Breakdown chart
     fig_breakdown = create_breakdown_chart(projection_df, current_nw)
-    st.plotly_chart(fig_breakdown, use_container_width=True)
+    st.plotly_chart(fig_breakdown, config={"responsive": True})
     
     st.divider()
     
@@ -372,7 +372,7 @@ def show_growth_projections(filtered_df):
         display_df['Contributions'] = display_df['Contributions'].apply(lambda x: f"${x:,.0f}")
         display_df['Growth'] = display_df['Growth'].apply(lambda x: f"${x:,.0f}")
         
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width="stretch", hide_index=True)
     
     # Comparison with historical growth
     if avg_monthly_growth > 0:
@@ -403,3 +403,5 @@ def show_growth_projections(filtered_df):
     """)
     
     st.info("Note: These projections are based on assumed returns and contributions. Actual results will vary based on market performance and your actual saving/investment behavior. This is for planning purposes only and should not be considered financial advice.")
+
+

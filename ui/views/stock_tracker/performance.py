@@ -60,7 +60,7 @@ def _render_performance_chart(df: pd.DataFrame, symbols: List[str]) -> None:
             return
         
         fig = create_performance_comparison(df, symbols)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
         st.caption(
             "**Note:** All values are normalized to 100 at the start of the period "
@@ -132,7 +132,7 @@ def _render_performance_table(df: pd.DataFrame, symbols: List[str]) -> None:
             vmin=-20,
             vmax=20
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -191,7 +191,7 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
             'Max Return %': '{:.2f}%',
             'Sharpe Ratio': '{:.3f}'
         }),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
     
@@ -199,3 +199,4 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
         "**Sharpe Ratio:** Higher is better. Measures risk-adjusted returns. "
         "Simplified calculation assumes risk-free rate = 0."
     )
+

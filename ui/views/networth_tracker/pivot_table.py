@@ -156,6 +156,7 @@ def style_grand_total_row(pivot_df, month_cols, comparison_type="Monthly", pos_c
         pd.DataFrame: Copy of pivot_df with styled Grand Total row.
     """
     styled_df = pivot_df.copy()
+    styled_df[month_cols] = styled_df[month_cols].astype(object)
     last_row_idx = len(styled_df) - 1
     last_row_values = styled_df.loc[last_row_idx, month_cols].values.astype(float)
 
@@ -167,7 +168,6 @@ def style_grand_total_row(pivot_df, month_cols, comparison_type="Monthly", pos_c
         pct_changes.append(pct)
 
     max_change = max(np.abs(pct_changes[1:]), default=1)
-    max_intensity = 0.8
     styled_values = []
     for idx, val in enumerate(last_row_values):
         if idx == 0:
@@ -213,8 +213,8 @@ def export_to_excel(pivot_df):
     for col in excel_df.columns:
         if col not in [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY]:
             try:
-                excel_df[col] = pd.to_numeric(excel_df[col], errors='ignore')
-            except:
+                excel_df[col] = pd.to_numeric(excel_df[col])
+            except (ValueError, TypeError):
                 pass
 
     buffer = io.BytesIO()

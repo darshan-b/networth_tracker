@@ -136,7 +136,7 @@ def _render_category_pie_chart(df):
             return
         
         fig = create_donut_chart(category_spending, '')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering category chart: {str(e)}")
@@ -162,7 +162,7 @@ def _render_spending_trend_chart(df):
     try:
         daily_spending = _aggregate_daily_spending(filtered_df)
         fig = _create_trend_chart(daily_spending)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
     except Exception as e:
         st.error(f"Error rendering spending trend: {str(e)}")
 
@@ -269,3 +269,5 @@ def _create_trend_chart(daily_spending):
                             y='cumulative_amount', 
                             x_title='Date', 
                             y_title="Cumulative Spending ($)")
+
+

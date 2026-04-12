@@ -509,7 +509,7 @@ def render_chat_assistant(networth_df, expenses_df):
             ]
             
             for i, q in enumerate(expense_examples):
-                if st.button(q, key=f"exp_{i}", use_container_width=True):
+                if st.button(q, key=f"exp_{i}", width="stretch"):
                     st.session_state.selected_q = q
         
         # Show networth examples if networth is selected
@@ -526,7 +526,7 @@ def render_chat_assistant(networth_df, expenses_df):
             ]
             
             for i, q in enumerate(networth_examples):
-                if st.button(q, key=f"nw_{i}", use_container_width=True):
+                if st.button(q, key=f"nw_{i}", width="stretch"):
                     st.session_state.selected_q = q
         
         # Combined questions if both are selected
@@ -540,7 +540,7 @@ def render_chat_assistant(networth_df, expenses_df):
             ]
             
             for i, q in enumerate(combined_examples):
-                if st.button(q, key=f"comb_{i}", use_container_width=True):
+                if st.button(q, key=f"comb_{i}", width="stretch"):
                     st.session_state.selected_q = q
         
         st.divider()
@@ -548,12 +548,12 @@ def render_chat_assistant(networth_df, expenses_df):
         if st.session_state.chat_messages:
             st.caption(f"💬 Messages: {len(st.session_state.chat_messages)}")
             
-            if st.button("🔄 Refresh Data", use_container_width=True):
+            if st.button("🔄 Refresh Data", width="stretch"):
                 if 'financial_context' in st.session_state:
                     del st.session_state.financial_context
                 st.success("✅ Will refresh!")
         
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", width="stretch"):
             st.session_state.chat_messages = []
             if 'financial_context' in st.session_state:
                 del st.session_state.financial_context
@@ -608,3 +608,4 @@ def render_chat_assistant(networth_df, expenses_df):
                     error = f"❌ Error: {str(e)}"
                     st.error(error)
                     st.session_state.chat_messages.append({"role": "assistant", "content": error})
+

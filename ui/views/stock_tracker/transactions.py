@@ -99,7 +99,7 @@ def _render_transaction_timeline(df: pd.DataFrame) -> None:
             return
         
         fig = create_transaction_timeline(df)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
     except Exception as e:
         st.error(f"Error creating timeline chart: {str(e)}")
 
@@ -136,7 +136,7 @@ def _render_transaction_breakdown(df: pd.DataFrame) -> None:
             'Avg Amount': '${:,.2f}',
             'Total Quantity': '{:.4f}'
         }),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -175,7 +175,7 @@ def _render_recent_transactions(df: pd.DataFrame, n: int = 20) -> None:
     
     st.dataframe(
         recent_display.style.format(format_dict),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=400
     )
@@ -264,9 +264,10 @@ def _render_all_transactions(df: pd.DataFrame) -> None:
         
         st.dataframe(
             display_df.style.format(format_dict),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=500
         )
     else:
         st.warning("No transaction data to display.")
+

@@ -52,7 +52,7 @@ def _render_cost_basis_chart(df: pd.DataFrame) -> None:
     try:
         fig = create_cost_basis_comparison(df)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, config={"responsive": True})
         else:
             st.warning("Unable to create cost basis comparison chart.")
     except Exception as e:
@@ -111,7 +111,7 @@ def _render_cost_basis_breakdown(df: pd.DataFrame) -> None:
             vmin=-20,
             vmax=20
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=400
     )
@@ -187,3 +187,4 @@ def _render_cost_basis_metrics(df: pd.DataFrame) -> None:
             st.caption(f"{loser_pct:.1f}% of positions")
         else:
             st.info("No loss-making positions")
+

@@ -68,7 +68,7 @@ def render_dashboard(filtered_df):
             'assets',
             metrics['current_assets']
         )
-        st.plotly_chart(fig_holdings, use_container_width=True)
+        st.plotly_chart(fig_holdings, config={"responsive": True})
     
     with col_cat2:
         st.markdown("**Liabilities by category**")
@@ -84,7 +84,7 @@ def render_dashboard(filtered_df):
                 'liabilities',
                 metrics['current_liabilities']
             )
-            st.plotly_chart(fig_liabilities, use_container_width=True)
+            st.plotly_chart(fig_liabilities, config={"responsive": True})
         else:
             st.info("No liabilities recorded")
     
@@ -103,7 +103,7 @@ def render_dashboard(filtered_df):
         account_type_dist = account_type_dist.groupby(ColumnNames.ACCOUNT_TYPE)['amount_Display'].sum()
         
         fig_type = create_donut_chart(account_type_dist, "account_type Distribution")
-        st.plotly_chart(fig_type, use_container_width=True)
+        st.plotly_chart(fig_type, config={"responsive": True})
     
     with col_pie2:
         st.markdown("**Top 5 accounts**")
@@ -113,4 +113,6 @@ def render_dashboard(filtered_df):
         top_accounts = top_accounts.nlargest(5, ColumnNames.AMOUNT)[[ColumnNames.ACCOUNT, ColumnNames.AMOUNT, ColumnNames.CATEGORY]]
         
         fig_top = create_top_accounts_chart(top_accounts)
-        st.plotly_chart(fig_top, use_container_width=True)
+        st.plotly_chart(fig_top, config={"responsive": True})
+
+

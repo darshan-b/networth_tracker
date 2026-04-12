@@ -99,7 +99,7 @@ def _render_allocation_pie(data: pd.DataFrame) -> None:
     """
     try:
         fig = create_allocation_chart(data)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
     except Exception as e:
         st.error(f"Error creating allocation chart: {str(e)}")
 
@@ -112,7 +112,7 @@ def _render_gain_loss_bar(data: pd.DataFrame) -> None:
     """
     try:
         fig = create_gain_loss_chart(data)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
     except Exception as e:
         st.error(f"Error creating gain/loss chart: {str(e)}")
 
@@ -186,7 +186,7 @@ def _render_allocation_table(data: pd.DataFrame) -> None:
             vmin=-20,
             vmax=20
         ),
-        use_container_width=True,
+        width="stretch",
         height=400
     )
     
@@ -195,3 +195,4 @@ def _render_allocation_table(data: pd.DataFrame) -> None:
         f"**Concentration Analysis:** "
         f"Top 3 positions represent {table_data.head(3)['Allocation %'].sum():.1f}% of portfolio"
     )
+

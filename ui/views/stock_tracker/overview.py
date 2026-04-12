@@ -102,7 +102,7 @@ def render(
         
         fig = create_cost_basis_comparison(historical_owned)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, config={"responsive": True})
         else:
             st.info("Unable to create performance comparison chart.")
         
@@ -363,6 +363,7 @@ def _render_holdings_table(
             vmin=-20,
             vmax=20
         ),
-        use_container_width=True,
+        width="stretch",
         height=400
     )
+

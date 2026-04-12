@@ -355,7 +355,7 @@ def show_growth_over_time(filtered_df):
         height=700
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, config={"responsive": True})
     
     # -------------------------
     # Chart Download
@@ -370,3 +370,5 @@ def show_growth_over_time(filtered_df):
         file_name="net_worth_over_time.html",
         mime="text/html"
     )
+
+

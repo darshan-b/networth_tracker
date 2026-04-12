@@ -100,7 +100,7 @@ def _render_budget_comparison_chart(budget_df):
             yaxis_title="amount ($)"
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering budget comparison chart: {str(e)}")
@@ -198,3 +198,4 @@ def _render_budget_progress(spent, budget, percentage):
         st.success(
             f"${remaining:,.2f} remaining ({100 - percentage:.1f}%)"
         )
+

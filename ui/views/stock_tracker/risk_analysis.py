@@ -113,7 +113,7 @@ def _render_drawdown_analysis(df: pd.DataFrame) -> None:
             return
         
         fig = create_drawdown_chart(portfolio_daily)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
         # Calculate drawdown statistics
         cumulative = portfolio_daily['Current Value'] / portfolio_daily['Current Value'].iloc[0]
@@ -145,7 +145,7 @@ def _render_correlation_analysis(df: pd.DataFrame, symbols: List[str]) -> None:
             return
         
         fig = create_correlation_heatmap(df)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
         st.caption(
             "**Correlation Matrix:** Shows how assets move together. "
@@ -241,7 +241,7 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
             subset=['Volatility %'],
             cmap='YlOrRd'
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
     
@@ -251,3 +251,4 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
         "**Downside Deviation:** Volatility of negative returns only.\n\n"
         "**Beta:** Sensitivity to portfolio movements. >1 = more volatile than portfolio."
     )
+

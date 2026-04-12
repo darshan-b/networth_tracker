@@ -106,7 +106,7 @@ def _render_top_merchants(df):
                     yaxis_title="",
                     yaxis={'categoryorder': 'total ascending'}
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, config={"responsive": True})
                 
             elif selected == "By Category":
                 st.subheader("By Category")
@@ -126,7 +126,7 @@ def _render_top_merchants(df):
                     yaxis_title="",
                     yaxis={'categoryorder': 'total ascending'}
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, config={"responsive": True})
                 
             else:  # By Subcategory
                 st.subheader("By Subcategory")
@@ -146,7 +146,7 @@ def _render_top_merchants(df):
                     yaxis_title="",
                      yaxis={'categoryorder': 'total ascending'}
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering top merchants: {str(e)}")
@@ -180,7 +180,7 @@ def _render_dow_spending(df):
             xaxis_title="", 
             yaxis_title="amount ($)"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering day-of-week spending: {str(e)}")
@@ -219,7 +219,7 @@ def _render_avg_transaction_by_category(df):
             xaxis_title="", 
             yaxis_title="Average ($)"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering average transactions: {str(e)}")
@@ -352,7 +352,7 @@ def _render_category_trends(df):
             yaxis_title="amount ($)",
             xaxis=dict(tickformat="%b %Y")
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering category trends: {str(e)}")
@@ -441,4 +441,5 @@ def _render_cash_flow(df):
     container = st.container(border=True)  # Simple built-in border
 
     with container:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, config={"responsive": True})
+

@@ -162,14 +162,14 @@ def render_networth_sidebar_filters(
         # Quick actions
         col1, col2, col3 = st.sidebar.columns(3)
         with col1:
-            if st.button("Select All", use_container_width=True, help="Select all Accounts"):
+            if st.button("Select All", width="stretch", help="Select all Accounts"):
                 st.session_state.selected_accounts = accounts.copy()
                 for acc in accounts:
                     st.session_state[f"check_{acc}"] = True
                 st.rerun()
                 
         with col2:
-            if st.button("Clear All", use_container_width=True, help="Deselect all Accounts"):
+            if st.button("Clear All", width="stretch", help="Deselect all Accounts"):
                 st.session_state.selected_accounts = []
                 for acc in accounts:
                     st.session_state[f"check_{acc}"] = False
@@ -177,7 +177,7 @@ def render_networth_sidebar_filters(
                 
         with col3:
             toggle_label = "Collapse" if mostly_expanded else "Expand"
-            if st.button(toggle_label, use_container_width=True, help=f"{toggle_label} all sections"):
+            if st.button(toggle_label, width="stretch", help=f"{toggle_label} all sections"):
                 new_state = not mostly_expanded
                 for acct_type in grouped_accounts.keys():
                     st.session_state.expander_states[acct_type] = new_state
@@ -192,7 +192,7 @@ def render_networth_sidebar_filters(
                 # Group action buttons
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("Select All", use_container_width=True, key=f"all_{acct_type}"):
+                    if st.button("Select All", width="stretch", key=f"all_{acct_type}"):
                         current = set(st.session_state.selected_accounts)
                         current.update(accts)
                         st.session_state.selected_accounts = list(current)
@@ -201,7 +201,7 @@ def render_networth_sidebar_filters(
                         st.rerun()
                         
                 with col2:
-                    if st.button("Clear All", use_container_width=True, key=f"none_{acct_type}"):
+                    if st.button("Clear All", width="stretch", key=f"none_{acct_type}"):
                         st.session_state.selected_accounts = [
                             a for a in st.session_state.selected_accounts if a not in accts
                         ]
@@ -574,3 +574,4 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
     except Exception as e:
         st.sidebar.error(f"Error applying date filter: {str(e)}")
         return pd.DataFrame(), 1, 1
+
