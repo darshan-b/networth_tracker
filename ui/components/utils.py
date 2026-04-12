@@ -3,7 +3,6 @@
 import streamlit as st
 import pandas as pd
 from typing import Dict, List, Optional, Callable, Any
-from functools import wraps
 
 
 def render_metric_cards(metrics_config: Dict[str, Dict[str, Any]], num_columns: Optional[int] = None) -> None:
@@ -216,6 +215,22 @@ def create_download_button(
         file_name=filename,
         mime=mime_type
     )
+
+
+def render_recovery_guide(
+    title: str,
+    message: str,
+    steps: List[str],
+    message_type: str = "warning"
+) -> None:
+    """Render a recovery-oriented state with actionable next steps."""
+    render_info_message(title, message_type=message_type)
+    st.write(message)
+
+    if steps:
+        with st.expander("How to fix this", expanded=True):
+            for step in steps:
+                st.markdown(f"- {step}")
 
 
 def render_tabs_safely(

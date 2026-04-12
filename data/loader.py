@@ -1,7 +1,7 @@
 """Data loading and preprocessing functions."""
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -12,6 +12,20 @@ from constants import ColumnNames
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / 'data'
 RAW_DATA_DIR = DATA_DIR / 'raw'
+
+
+def _show_missing_file_error(filepath: Path, context: str) -> None:
+    """Display a consistent missing-file message with recovery guidance."""
+    st.error(f"{context} file not found.")
+    st.caption(f"Expected path: `{filepath}`")
+    st.info("Add the file in the expected location or update the loader configuration before retrying.")
+
+
+def _show_load_error(filepath: Path, context: str, error: Exception) -> None:
+    """Display a consistent data-load failure message."""
+    st.error(f"Unable to load {context.lower()}.")
+    st.caption(f"Source: `{filepath}`")
+    st.info(f"Check the file format, required columns, and sheet names. Details: {error}")
 
 
 @st.cache_data
@@ -38,10 +52,10 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         return data
         
     except FileNotFoundError:
-        st.error(f"Error: File not found at {filepath}")
+        _show_missing_file_error(filepath, "Net worth data")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading {filepath}: {e}")
+        _show_load_error(filepath, "Net worth data", e)
         return pd.DataFrame()
 
 
@@ -68,10 +82,10 @@ def load_expense_transactions(filename: str = 'transactions.xlsx') -> pd.DataFra
         return df
         
     except FileNotFoundError:
-        st.error(f"Error: File not found at {filepath}")
+        _show_missing_file_error(filepath, "Expense transactions")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Error loading {filepath}: {e}")
+        _show_load_error(filepath, "Expense transactions", e)
         return pd.DataFrame()
 
 
@@ -95,7 +109,9 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
             budget_df = pd.read_csv(csv_path)
             return dict(zip(budget_df[ColumnNames.DATE], budget_df['budget']))
         except Exception as e:
-            st.warning(f"Warning: Error loading budgets from CSV: {e}. Using defaults.")
+            st.warning("Budget file could not be loaded from CSV. Using default budget values.")
+            st.caption(f"Source: `{csv_path}`")
+            st.info(f"Check for `date` and `budget` columns. Details: {e}")
     
     # Try Excel if CSV not found or failed
     elif xlsx_path.exists():
@@ -103,22 +119,24 @@ def load_budgets(filename: str = 'budgets.csv') -> Dict[str, float]:
             budget_df = pd.read_excel(xlsx_path)
             return dict(zip(budget_df[ColumnNames.DATE], budget_df['budget']))
         except Exception as e:
-            st.warning(f"Warning: Error loading budgets from Excel: {e}. Using defaults.")
+            st.warning("Budget file could not be loaded from Excel. Using default budget values.")
+            st.caption(f"Source: `{xlsx_path}`")
+            st.info(f"Check for `date` and `budget` columns. Details: {e}")
     
     # Return defaults if no file found
     return _get_default_budgets()
 
 
 @st.cache_data
-def load_stock_data(filename:str = 'stock_positions.xlsx') -> pd.DataFrame:
-    """Load all sheets from the Excel file."""
+def load_stock_data(filename: str = 'stock_positions.xlsx') -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Load stock trading and historical sheets from the Excel file."""
     file_path = RAW_DATA_DIR / filename
     
     try:
         trading_log = pd.read_excel(file_path, sheet_name='trading_log')
         try:
             historical = pd.read_excel(file_path, sheet_name='Historical_Tracking')
-        except:
+        except ValueError:
             historical = pd.DataFrame()
         
         # Convert dates
@@ -127,8 +145,11 @@ def load_stock_data(filename:str = 'stock_positions.xlsx') -> pd.DataFrame:
             historical['Date'] = pd.to_datetime(historical['Date'])
         
         return trading_log, historical
+    except FileNotFoundError:
+        _show_missing_file_error(file_path, "Stock tracker")
+        return None, None
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        _show_load_error(file_path, "Stock tracker data", e)
         return None, None
 
 
