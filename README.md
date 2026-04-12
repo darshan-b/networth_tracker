@@ -161,3 +161,25 @@ The app usually opens at `http://localhost:8501`.
 - If the stock tracker does not load, verify both the workbook name and sheet names.
 - If budgets do not appear, check whether your budget file is in `data/` instead of `data/raw/`.
 - If Streamlit fails to start, confirm the environment was created from `env.yml` and activated before running `streamlit run app.py`.
+
+## Developer Checks
+
+This repo now includes a lightweight tooling baseline in `pyproject.toml`.
+
+Run lint checks:
+
+```bash
+ruff check .
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+Optional formatting:
+
+```bash
+ruff format .
+```

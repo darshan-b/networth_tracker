@@ -285,10 +285,24 @@ def render_stock_header_filters(
         if historical_df is None or historical_df.empty:
             st.error("No historical data available.")
             return [], [], []
+
+        required_columns = [
+            StockColumnNames.DATE,
+            StockColumnNames.TICKER,
+            StockColumnNames.QUANTITY,
+            StockColumnNames.BROKERAGE,
+            StockColumnNames.ACCOUNT_NAME,
+            StockColumnNames.INVESTMENT_TYPE,
+        ]
+        missing_columns = [col for col in required_columns if col not in historical_df.columns]
+        if missing_columns:
+            st.error(
+                "Historical data is missing normalized columns: "
+                f"{', '.join(missing_columns)}"
+            )
+            return [], [], []
         
         # Get latest data for currently owned positions
-        # latest_data = historical_df.sort_values('Date').groupby('ticker').last().reset_index()
-        # currently_owned = latest_data[latest_data['quantity'] > 0].copy()
         latest_data = (
             historical_df
             .sort_values(StockColumnNames.DATE)
@@ -310,11 +324,7 @@ def render_stock_header_filters(
             return [], [], []
         
         # Render Brokerage filter
-        if StockColumnNames.BROKERAGE in currently_owned.columns:
-            all_brokerages = sorted(currently_owned[StockColumnNames.BROKERAGE].dropna().unique())
-        else:
-            st.warning("Brokerage column not found in historical data.")
-            all_brokerages = []
+        all_brokerages = sorted(currently_owned[StockColumnNames.BROKERAGE].dropna().unique())
         
         if all_brokerages:
             selected_brokerages = st.segmented_control(
@@ -336,14 +346,7 @@ def render_stock_header_filters(
             filtered_for_accounts = currently_owned
         
         # Render Account Name filter
-        if StockColumnNames.ACCOUNT_NAME in filtered_for_accounts.columns:
-            all_accounts = sorted(filtered_for_accounts[StockColumnNames.ACCOUNT_NAME].dropna().unique())
-            # st.write(all_accounts, historical_df.groupby(['Brokerage'])['Account Name'].unique(), 
-            # currently_owned.groupby(['Brokerage'])['Account Name'].unique(), selected_brokerages,
-            # latest_data)
-        else:
-            st.warning("Account Name column not found in historical data.")
-            all_accounts = []
+        all_accounts = sorted(filtered_for_accounts[StockColumnNames.ACCOUNT_NAME].dropna().unique())
         
         if all_accounts:
             selected_accounts = st.segmented_control(
@@ -374,11 +377,7 @@ def render_stock_header_filters(
             filtered_for_types = currently_owned
         
         # Render Investment Type filter
-        if StockColumnNames.INVESTMENT_TYPE in filtered_for_types.columns:
-            all_types = sorted(filtered_for_types[StockColumnNames.INVESTMENT_TYPE].dropna().unique())
-        else:
-            st.warning("Investment Type column not found in historical data.")
-            all_types = []
+        all_types = sorted(filtered_for_types[StockColumnNames.INVESTMENT_TYPE].dropna().unique())
         
         if all_types:
             selected_types = st.segmented_control(

@@ -61,51 +61,37 @@ def _filter_by_date_range(
     if len(date_range) != 2 or date_range[0] is None or date_range[1] is None:
         return df
 
-    date_col = None
-    for col in df.columns:
-        if col.lower() == "date":
-            date_col = col
-            break
-
-    if date_col is None or date_col not in df.columns:
+    if StockColumnNames.DATE not in df.columns:
         return df
 
     start_date, end_date = date_range
     return df[
-        (df[date_col].dt.date >= start_date)
-        & (df[date_col].dt.date <= end_date)
+        (df[StockColumnNames.DATE].dt.date >= start_date)
+        & (df[StockColumnNames.DATE].dt.date <= end_date)
     ].copy()
 
 
 def _get_filtered_symbols(historical_df: pd.DataFrame) -> List[str]:
     """Get list of currently owned symbols from historical data."""
-    date_col = None
-    ticker_col = None
-    quantity_col = None
-
-    for col in historical_df.columns:
-        col_lower = col.lower()
-        if col_lower == StockColumnNames.DATE.lower():
-            date_col = col
-        elif col_lower in [StockColumnNames.TICKER.lower(), StockColumnNames.SYMBOL.lower()]:
-            ticker_col = col
-        elif col_lower == StockColumnNames.QUANTITY.lower():
-            quantity_col = col
-
-    if date_col is None or ticker_col is None or quantity_col is None:
+    required_columns = [
+        StockColumnNames.DATE,
+        StockColumnNames.TICKER,
+        StockColumnNames.QUANTITY,
+    ]
+    if any(col not in historical_df.columns for col in required_columns):
         return []
 
     try:
         latest_data = (
             historical_df
-            .sort_values(date_col)
-            .groupby(ticker_col)
+            .sort_values(StockColumnNames.DATE)
+            .groupby(StockColumnNames.TICKER)
             .last()
             .reset_index()
         )
         currently_owned = latest_data[
-            latest_data[quantity_col] > 0
-        ][ticker_col].unique().tolist()
+            latest_data[StockColumnNames.QUANTITY] > 0
+        ][StockColumnNames.TICKER].unique().tolist()
         return sorted(currently_owned)
     except Exception:
         return []
@@ -187,26 +173,14 @@ def show_stock_tracker(
             return
 
         required_columns = {
-            StockColumnNames.DATE.lower(): StockColumnNames.DATE,
-            StockColumnNames.TICKER.lower(): "ticker (or Symbol)",
-            StockColumnNames.QUANTITY.lower(): StockColumnNames.QUANTITY,
-            StockColumnNames.BROKERAGE.lower(): StockColumnNames.BROKERAGE,
-            StockColumnNames.ACCOUNT_NAME.lower(): StockColumnNames.ACCOUNT_NAME,
-            StockColumnNames.INVESTMENT_TYPE.lower(): StockColumnNames.INVESTMENT_TYPE,
+            StockColumnNames.DATE: StockColumnNames.DATE,
+            StockColumnNames.TICKER: "ticker",
+            StockColumnNames.QUANTITY: StockColumnNames.QUANTITY,
+            StockColumnNames.BROKERAGE: StockColumnNames.BROKERAGE,
+            StockColumnNames.ACCOUNT_NAME: StockColumnNames.ACCOUNT_NAME,
+            StockColumnNames.INVESTMENT_TYPE: StockColumnNames.INVESTMENT_TYPE,
         }
-
-        col_mapping = {col.lower(): col for col in historical.columns}
-
-        missing = []
-        for req_col_lower, req_col_display in required_columns.items():
-            if req_col_lower == StockColumnNames.TICKER.lower():
-                if (
-                    StockColumnNames.TICKER.lower() not in col_mapping
-                    and StockColumnNames.SYMBOL.lower() not in col_mapping
-                ):
-                    missing.append(req_col_display)
-            elif req_col_lower not in col_mapping:
-                missing.append(req_col_display)
+        missing = [label for column, label in required_columns.items() if column not in historical.columns]
 
         if missing:
             st.error(

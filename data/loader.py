@@ -56,6 +56,33 @@ def _load_excel_sheet(filepath: Path, sheet_name: str, context: str) -> pd.DataF
     return EMPTY_DF.copy()
 
 
+def _normalize_stock_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize stock sheet column names to a predictable canonical shape."""
+    if df.empty:
+        return df.copy()
+
+    normalized_df = df.copy()
+    normalized_df.columns = [str(col).strip() for col in normalized_df.columns]
+
+    normalized_map = {
+        "date": StockColumnNames.DATE,
+        "ticker": StockColumnNames.TICKER,
+        "symbol": StockColumnNames.TICKER,
+        "quantity": StockColumnNames.QUANTITY,
+        "brokerage": StockColumnNames.BROKERAGE,
+        "account name": StockColumnNames.ACCOUNT_NAME,
+        "investment type": StockColumnNames.INVESTMENT_TYPE,
+    }
+
+    rename_map = {}
+    for col in normalized_df.columns:
+        normalized_key = col.lower().strip()
+        if normalized_key in normalized_map:
+            rename_map[col] = normalized_map[normalized_key]
+
+    return normalized_df.rename(columns=rename_map)
+
+
 @st.cache_data
 def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
     """Load and preprocess net worth data from CSV.
@@ -160,8 +187,12 @@ def load_stock_data(filename: str = 'stock_positions.xlsx') -> Tuple[pd.DataFram
     """Load stock trading and historical sheets from the Excel file."""
     file_path = _resolve_raw_path(filename)
 
-    trading_log = _load_excel_sheet(file_path, StockSheetNames.TRADING_LOG, "Stock tracker data")
-    historical = _load_excel_sheet(file_path, StockSheetNames.HISTORICAL_TRACKING, "Stock tracker data")
+    trading_log = _normalize_stock_columns(
+        _load_excel_sheet(file_path, StockSheetNames.TRADING_LOG, "Stock tracker data")
+    )
+    historical = _normalize_stock_columns(
+        _load_excel_sheet(file_path, StockSheetNames.HISTORICAL_TRACKING, "Stock tracker data")
+    )
 
     if not trading_log.empty and StockColumnNames.DATE in trading_log.columns:
         trading_log[StockColumnNames.DATE] = pd.to_datetime(trading_log[StockColumnNames.DATE])
