@@ -30,7 +30,7 @@ def color_pct(value):
     """Return HTML color-coded string for positive/negative percentages."""
     color = "green" if value >= 0 else "red"
     sign = "+" if value >= 0 else ""
-    arrow = "↑" if value > 0 else "↓" if value < 0 else "→"
+    arrow = "&uarr;" if value > 0 else "&darr;" if value < 0 else "&rarr;"
     return f"<span style='color:{color};'>{arrow} {sign}{value:.2f}%</span>"
 
 
@@ -177,7 +177,7 @@ def style_grand_total_row(pivot_df, month_cols, comparison_type="Monthly", pos_c
         else:
             pct = pct_changes[idx]
             sign = "+" if pct >= 0 else ""
-            arrow = "↑" if pct > 0 else "↓" if pct < 0 else "→"
+            arrow = "&uarr;" if pct > 0 else "&darr;" if pct < 0 else "&rarr;"
             # intensity: higher pct -> darker color
             intensity = min(abs(pct) / max_change, 1) ** 0.5
             # convert intensity to lightness: 0 -> 80%, 1 -> 40%

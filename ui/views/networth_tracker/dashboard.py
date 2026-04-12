@@ -96,13 +96,13 @@ def render_dashboard(filtered_df):
     col_pie1, col_pie2 = st.columns(2)
     
     with col_pie1:
-        st.markdown("**account_type Distribution**")
+        st.markdown("**Account Type Distribution**")
         
         account_type_dist = latest_data.copy()
         account_type_dist['amount_Display'] = account_type_dist[ColumnNames.AMOUNT].abs()
         account_type_dist = account_type_dist.groupby(ColumnNames.ACCOUNT_TYPE)['amount_Display'].sum()
         
-        fig_type = create_donut_chart(account_type_dist, "account_type Distribution")
+        fig_type = create_donut_chart(account_type_dist, "Account Type Distribution")
         st.plotly_chart(fig_type, config={"responsive": True})
     
     with col_pie2:

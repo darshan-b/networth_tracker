@@ -12,21 +12,21 @@ class ChartConfig:
     WIDTH = None  # None = responsive width
     
     # Plotly template
-    TEMPLATE = 'plotly_dark'
+    TEMPLATE = 'plotly_white'
     
     # Font settings
     FONT = {
-        'family': 'Arial, sans-serif',
+        'family': 'Aptos, Segoe UI, sans-serif',
         'size': 12,
-        'color': 'black'
+        'color': '#1f2937'
     }
     
     # Margins
     MARGIN = {
-        'l': 50,
-        'r': 50,
-        't': 50,
-        'b': 50
+        'l': 32,
+        'r': 24,
+        't': 48,
+        'b': 32
     }
     
     # Chart-specific settings
@@ -181,6 +181,25 @@ class AppConfig:
         "Stock Tracker",
     ]
     VIEW_HELP = "Choose between Net Worth tracking, Expense tracking, or Stock portfolio analysis"
+
+
+class StockTrackerConfig:
+    """Stock tracker labels and visible copy."""
+
+    TITLE = "Portfolio Analysis Dashboard"
+    FILTER_SUMMARY_TITLE = "Active Filters"
+    FILTER_DATE_RANGE_LABEL = "Date Range"
+    FILTER_DATE_RANGE_ALL = "Date Range: All"
+    AVAILABLE_COLUMNS_TITLE = "Available columns in your data"
+    ERROR_DETAILS_TITLE = "Error Details"
+    TAB_NAMES = [
+        "Overview",
+        "Performance",
+        "Allocation",
+        "Risk Analysis",
+        "Transactions",
+        "Cost Basis",
+    ]
 
 
 class NetWorthConfig:

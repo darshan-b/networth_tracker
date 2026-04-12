@@ -213,7 +213,7 @@ def render_networth_sidebar_filters(
                 for acc in accts:
                     info = account_info.get(acc, {})
                     value = info.get('value', 0)
-                    trend = info.get('trend', '→')
+                    trend = info.get('trend', '->')
                     label = f"{acc} ({trend} ${value:,.0f})" if info else acc
                     is_selected = acc in st.session_state.selected_accounts
                     
@@ -231,7 +231,7 @@ def render_networth_sidebar_filters(
         
         if count > MIN_ACCOUNTS_WARNING:
             selected_value = sum(
-                account_info.get(a, {}).get('value', 0) 
+                account_info.get(a, {}).get('value', 0)
                 for a in st.session_state.selected_accounts
             )
             total_value = sum(
@@ -254,6 +254,9 @@ def render_networth_sidebar_filters(
                 st.metric("% of Total", f"{pct:.1f}%")
         else:
             st.sidebar.error("No Accounts selected")
+
+        if search:
+            st.sidebar.caption(f"{len(filtered_accounts)} matches")
         
         # Search results info
         if search:
@@ -460,7 +463,7 @@ def render_stock_sidebar_filters(
         # Show date range info
         if len(date_range) == 2:
             days = (date_range[1] - date_range[0]).days + 1
-            st.sidebar.caption(f"📅 {days} days selected")
+            st.sidebar.caption(f"{days} days selected")
         
         # Show sold positions info
         latest_data = historical_df.sort_values(StockColumnNames.DATE).groupby(StockColumnNames.TICKER).last().reset_index()
@@ -490,7 +493,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         KeyError: If required columns are missing
     """
     try:
-        st.markdown("### 📅 Date Range Filter")
+        st.markdown("### Date Range Filter")
         
         # Validate input
         if df is None or df.empty:
@@ -560,7 +563,7 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
             
             # Display date range info
             st.info(
-                f"📊 Showing data from **{df_filtered[ColumnNames.DATE].min().strftime('%Y-%m-%d')}** "
+                f"Showing data from **{df_filtered[ColumnNames.DATE].min().strftime('%Y-%m-%d')}** "
                 f"to **{df_filtered[ColumnNames.DATE].max().strftime('%Y-%m-%d')}**\n\n"
                 f"({date_range_days} days, {num_months} months)"
             )

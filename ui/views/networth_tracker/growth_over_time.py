@@ -7,6 +7,7 @@ import io
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy import stats
+from config import ChartConfig
 from constants import ColumnNames
 
 
@@ -319,7 +320,7 @@ def show_growth_over_time(filtered_df):
             textposition='top center',
             mode='text',
             showlegend=False,
-            textfont=dict(size=14, family="Arial Black"),
+            textfont=dict(size=14, family=ChartConfig.FONT['family']),
             name='Total amount'
         )
     )
@@ -334,7 +335,7 @@ def show_growth_over_time(filtered_df):
                 textposition='middle center',
                 mode='text',
                 showlegend=False,
-                textfont=dict(size=14, color=totals_df['Period_Color'], family="Arial"),
+                textfont=dict(size=14, color=totals_df['Period_Color'], family=ChartConfig.FONT['family']),
                 name=f'{comparison_label} Change'
             )
         )
