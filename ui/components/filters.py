@@ -16,7 +16,7 @@ from data.filters import (
     filter_by_date_range,
     DATE_RANGE_CUSTOM
 )
-from constants import ColumnNames
+from constants import ColumnNames, StockColumnNames
 
 # Constants
 MIN_ACCOUNTS_WARNING = 0
@@ -286,16 +286,29 @@ def render_stock_header_filters(
         # Get latest data for currently owned positions
         # latest_data = historical_df.sort_values('Date').groupby('ticker').last().reset_index()
         # currently_owned = latest_data[latest_data['quantity'] > 0].copy()
-        latest_data = historical_df.sort_values('Date').groupby(['ticker', 'Brokerage', 'Account Name', 'Investment Type']).last().reset_index()
-        currently_owned = latest_data[latest_data['quantity'] > 0].copy()
+        latest_data = (
+            historical_df
+            .sort_values(StockColumnNames.DATE)
+            .groupby(
+                [
+                    StockColumnNames.TICKER,
+                    StockColumnNames.BROKERAGE,
+                    StockColumnNames.ACCOUNT_NAME,
+                    StockColumnNames.INVESTMENT_TYPE
+                ]
+            )
+            .last()
+            .reset_index()
+        )
+        currently_owned = latest_data[latest_data[StockColumnNames.QUANTITY] > 0].copy()
         
         if currently_owned.empty:
             st.warning("No positions currently held.")
             return [], [], []
         
         # Render Brokerage filter
-        if 'Brokerage' in currently_owned.columns:
-            all_brokerages = sorted(currently_owned['Brokerage'].dropna().unique())
+        if StockColumnNames.BROKERAGE in currently_owned.columns:
+            all_brokerages = sorted(currently_owned[StockColumnNames.BROKERAGE].dropna().unique())
         else:
             st.warning("Brokerage column not found in historical data.")
             all_brokerages = []
@@ -314,14 +327,14 @@ def render_stock_header_filters(
         # Filter data for next dropdown based on brokerage selection
         if selected_brokerages:
             filtered_for_accounts = currently_owned[
-                currently_owned['Brokerage'].isin(selected_brokerages)
+                currently_owned[StockColumnNames.BROKERAGE].isin(selected_brokerages)
             ]
         else:
             filtered_for_accounts = currently_owned
         
         # Render Account Name filter
-        if 'Account Name' in filtered_for_accounts.columns:
-            all_accounts = sorted(filtered_for_accounts['Account Name'].dropna().unique())
+        if StockColumnNames.ACCOUNT_NAME in filtered_for_accounts.columns:
+            all_accounts = sorted(filtered_for_accounts[StockColumnNames.ACCOUNT_NAME].dropna().unique())
             # st.write(all_accounts, historical_df.groupby(['Brokerage'])['Account Name'].unique(), 
             # currently_owned.groupby(['Brokerage'])['Account Name'].unique(), selected_brokerages,
             # latest_data)
@@ -343,23 +356,23 @@ def render_stock_header_filters(
         # Filter data for investment type based on brokerage and account selection
         if selected_brokerages and selected_accounts:
             filtered_for_types = currently_owned[
-                (currently_owned['Brokerage'].isin(selected_brokerages)) &
-                (currently_owned['Account Name'].isin(selected_accounts))
+                (currently_owned[StockColumnNames.BROKERAGE].isin(selected_brokerages)) &
+                (currently_owned[StockColumnNames.ACCOUNT_NAME].isin(selected_accounts))
             ]
         elif selected_brokerages:
             filtered_for_types = currently_owned[
-                currently_owned['Brokerage'].isin(selected_brokerages)
+                currently_owned[StockColumnNames.BROKERAGE].isin(selected_brokerages)
             ]
         elif selected_accounts:
             filtered_for_types = currently_owned[
-                currently_owned['Account Name'].isin(selected_accounts)
+                currently_owned[StockColumnNames.ACCOUNT_NAME].isin(selected_accounts)
             ]
         else:
             filtered_for_types = currently_owned
         
         # Render Investment Type filter
-        if 'Investment Type' in filtered_for_types.columns:
-            all_types = sorted(filtered_for_types['Investment Type'].dropna().unique())
+        if StockColumnNames.INVESTMENT_TYPE in filtered_for_types.columns:
+            all_types = sorted(filtered_for_types[StockColumnNames.INVESTMENT_TYPE].dropna().unique())
         else:
             st.warning("Investment Type column not found in historical data.")
             all_types = []
@@ -408,8 +421,8 @@ def render_stock_sidebar_filters(
             return (None, None)
         
         # Date range filter
-        min_date = historical_df['Date'].min().date()
-        max_date = historical_df['Date'].max().date()
+        min_date = historical_df[StockColumnNames.DATE].min().date()
+        max_date = historical_df[StockColumnNames.DATE].max().date()
         
         date_range = st.sidebar.date_input(
             "Select Period",
@@ -450,8 +463,8 @@ def render_stock_sidebar_filters(
             st.sidebar.caption(f"📅 {days} days selected")
         
         # Show sold positions info
-        latest_data = historical_df.sort_values('Date').groupby('ticker').last().reset_index()
-        sold_symbols = latest_data[latest_data['quantity'] == 0]['ticker'].unique()
+        latest_data = historical_df.sort_values(StockColumnNames.DATE).groupby(StockColumnNames.TICKER).last().reset_index()
+        sold_symbols = latest_data[latest_data[StockColumnNames.QUANTITY] == 0][StockColumnNames.TICKER].unique()
         if len(sold_symbols) > 0:
             with st.sidebar.expander("Sold Positions (Not Displayed)"):
                 st.write(", ".join(sorted(sold_symbols)))

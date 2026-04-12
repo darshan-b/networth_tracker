@@ -10,6 +10,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from constants import StockColumnNames
 from ui.components.filters import render_stock_header_filters, render_stock_sidebar_filters
 from ui.views.stock_tracker import (
     overview, 
@@ -44,14 +45,14 @@ def _filter_by_header_selections(
     # Build filter conditions
     conditions = []
     
-    if selected_brokerages and 'Brokerage' in df.columns:
-        conditions.append(df['Brokerage'].isin(selected_brokerages))
+    if selected_brokerages and StockColumnNames.BROKERAGE in df.columns:
+        conditions.append(df[StockColumnNames.BROKERAGE].isin(selected_brokerages))
     
-    if selected_accounts and 'Account Name' in df.columns:
-        conditions.append(df['Account Name'].isin(selected_accounts))
+    if selected_accounts and StockColumnNames.ACCOUNT_NAME in df.columns:
+        conditions.append(df[StockColumnNames.ACCOUNT_NAME].isin(selected_accounts))
     
-    if selected_types and 'Investment Type' in df.columns:
-        conditions.append(df['Investment Type'].isin(selected_types))
+    if selected_types and StockColumnNames.INVESTMENT_TYPE in df.columns:
+        conditions.append(df[StockColumnNames.INVESTMENT_TYPE].isin(selected_types))
     
     # Apply all conditions with AND logic
     if conditions:
@@ -116,11 +117,11 @@ def _get_filtered_symbols(
     
     for col in historical_df.columns:
         col_lower = col.lower()
-        if col_lower == 'date':
+        if col_lower == StockColumnNames.DATE.lower():
             date_col = col
-        elif col_lower in ['ticker', 'symbol']:
+        elif col_lower in [StockColumnNames.TICKER.lower(), StockColumnNames.SYMBOL.lower()]:
             ticker_col = col
-        elif col_lower == 'quantity':
+        elif col_lower == StockColumnNames.QUANTITY.lower():
             quantity_col = col
     
     # Validate all required columns exist
@@ -247,12 +248,12 @@ def show_stock_tracker(
         
         # Validate required columns (case-insensitive)
         required_columns = {
-            'date': 'Date',
-            'ticker': 'ticker (or Symbol)',
-            'quantity': 'quantity',
-            'brokerage': 'Brokerage',
-            'account name': 'Account Name',
-            'investment type': 'Investment Type'
+            StockColumnNames.DATE.lower(): StockColumnNames.DATE,
+            StockColumnNames.TICKER.lower(): 'ticker (or Symbol)',
+            StockColumnNames.QUANTITY.lower(): StockColumnNames.QUANTITY,
+            StockColumnNames.BROKERAGE.lower(): StockColumnNames.BROKERAGE,
+            StockColumnNames.ACCOUNT_NAME.lower(): StockColumnNames.ACCOUNT_NAME,
+            StockColumnNames.INVESTMENT_TYPE.lower(): StockColumnNames.INVESTMENT_TYPE
         }
         
         # Create mapping of lowercase to actual column names
@@ -261,8 +262,8 @@ def show_stock_tracker(
         missing = []
         for req_col_lower, req_col_display in required_columns.items():
             # Check for ticker/symbol special case
-            if req_col_lower == 'ticker':
-                if 'ticker' not in col_mapping and 'symbol' not in col_mapping:
+            if req_col_lower == StockColumnNames.TICKER.lower():
+                if StockColumnNames.TICKER.lower() not in col_mapping and StockColumnNames.SYMBOL.lower() not in col_mapping:
                     missing.append(req_col_display)
             elif req_col_lower not in col_mapping:
                 missing.append(req_col_display)
@@ -328,7 +329,7 @@ def show_stock_tracker(
         if trading_log is not None and not trading_log.empty:
             try:
                 trading_log_filtered = trading_log[
-                    trading_log['ticker'].isin(filtered_symbols)
+                    trading_log[StockColumnNames.TICKER].isin(filtered_symbols)
                 ].copy()
             except Exception:
                 trading_log_filtered = pd.DataFrame()

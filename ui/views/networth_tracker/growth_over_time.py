@@ -37,7 +37,7 @@ def show_growth_over_time(filtered_df):
     # -------------------------
     st.subheader("Quick Stats")
     
-    totals_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str'], as_index=False)[ColumnNames.AMOUNT].sum()
+    totals_df = filtered_df.groupby([ColumnNames.MONTH, ColumnNames.MONTH_STR], as_index=False)[ColumnNames.AMOUNT].sum()
     
     if len(totals_df) >= 2:
         current_nw = totals_df.iloc[-1][ColumnNames.AMOUNT]
@@ -69,8 +69,8 @@ def show_growth_over_time(filtered_df):
         # Find best and worst months
         best_idx = totals_df[ColumnNames.AMOUNT].idxmax()
         worst_idx = totals_df[ColumnNames.AMOUNT].idxmin()
-        best_month = totals_df.loc[best_idx, 'month_Str']
-        worst_month = totals_df.loc[worst_idx, 'month_Str']
+        best_month = totals_df.loc[best_idx, ColumnNames.MONTH_STR]
+        worst_month = totals_df.loc[worst_idx, ColumnNames.MONTH_STR]
         
         col1, col2, col3, col4, col5 = st.columns(5)
         
@@ -171,7 +171,7 @@ def show_growth_over_time(filtered_df):
         period_filtered_df['Period_Str'] = period_filtered_df['Year']
     else:  # Monthly
         period_filtered_df['Period'] = period_filtered_df[ColumnNames.MONTH]
-        period_filtered_df['Period_Str'] = period_filtered_df['month_Str']
+        period_filtered_df['Period_Str'] = period_filtered_df[ColumnNames.MONTH_STR]
     
     period_col = 'Period'
     period_str_col = 'Period_Str'

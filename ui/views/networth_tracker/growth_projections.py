@@ -205,7 +205,7 @@ def show_growth_projections(filtered_df):
     st.header("Growth Projections & Goal Planning")
     
     # Calculate current net worth
-    totals_df = filtered_df.groupby([ColumnNames.MONTH, 'month_Str'], as_index=False)[ColumnNames.AMOUNT].sum()
+    totals_df = filtered_df.groupby([ColumnNames.MONTH, ColumnNames.MONTH_STR], as_index=False)[ColumnNames.AMOUNT].sum()
     
     if totals_df.empty:
         st.warning("No data available. Please adjust your filters.")

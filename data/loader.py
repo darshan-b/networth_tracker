@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 import pandas as pd
 import streamlit as st
-from constants import ColumnNames
+from constants import ColumnNames, StockColumnNames, StockSheetNames
 
 
 # Directory configuration
@@ -74,7 +74,7 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         # Process date and amount columns
         data[ColumnNames.MONTH] = pd.to_datetime(data[ColumnNames.MONTH])
         data[ColumnNames.AMOUNT] = data[ColumnNames.AMOUNT].round().astype(int)
-        data['month_Str'] = data[ColumnNames.MONTH].dt.strftime('%b-%Y')
+        data[ColumnNames.MONTH_STR] = data[ColumnNames.MONTH].dt.strftime('%b-%Y')
         data = data.sort_values(ColumnNames.MONTH)
         
         return data
@@ -160,14 +160,14 @@ def load_stock_data(filename: str = 'stock_positions.xlsx') -> Tuple[pd.DataFram
     """Load stock trading and historical sheets from the Excel file."""
     file_path = _resolve_raw_path(filename)
 
-    trading_log = _load_excel_sheet(file_path, 'trading_log', "Stock tracker data")
-    historical = _load_excel_sheet(file_path, 'Historical_Tracking', "Stock tracker data")
+    trading_log = _load_excel_sheet(file_path, StockSheetNames.TRADING_LOG, "Stock tracker data")
+    historical = _load_excel_sheet(file_path, StockSheetNames.HISTORICAL_TRACKING, "Stock tracker data")
 
-    if not trading_log.empty and 'Date' in trading_log.columns:
-        trading_log['Date'] = pd.to_datetime(trading_log['Date'])
+    if not trading_log.empty and StockColumnNames.DATE in trading_log.columns:
+        trading_log[StockColumnNames.DATE] = pd.to_datetime(trading_log[StockColumnNames.DATE])
 
-    if not historical.empty and 'Date' in historical.columns:
-        historical['Date'] = pd.to_datetime(historical['Date'])
+    if not historical.empty and StockColumnNames.DATE in historical.columns:
+        historical[StockColumnNames.DATE] = pd.to_datetime(historical[StockColumnNames.DATE])
 
     return trading_log, historical
 

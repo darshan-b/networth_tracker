@@ -26,6 +26,23 @@ class ColumnNames:
     ACCOUNT_TYPE = 'account_type'
 
 
+class StockColumnNames:
+    """Standard stock-tracker column names used across the application."""
+    DATE = 'Date'
+    TICKER = 'ticker'
+    SYMBOL = 'Symbol'
+    QUANTITY = 'quantity'
+    BROKERAGE = 'Brokerage'
+    ACCOUNT_NAME = 'Account Name'
+    INVESTMENT_TYPE = 'Investment Type'
+
+
+class StockSheetNames:
+    """Standard stock workbook sheet names."""
+    TRADING_LOG = 'trading_log'
+    HISTORICAL_TRACKING = 'Historical_Tracking'
+
+
 class ComparisonTypes:
     """Comparison period types."""
     MONTH = 'Month'

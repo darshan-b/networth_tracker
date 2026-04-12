@@ -78,7 +78,7 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
     and add a Grand Total row. Filter columns based on comparison type.
     
     Args:
-        filtered_df (pd.DataFrame): Filtered data containing ColumnNames.ACCOUNT_TYPE, ColumnNames.DATE, 'month_Str', and ColumnNames.AMOUNT.
+        filtered_df (pd.DataFrame): Filtered data containing ColumnNames.ACCOUNT_TYPE, ColumnNames.DATE, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
         rollup (bool): If True, summarize by account_type only. Otherwise, include category.
         comparison_type (str): "Monthly", "Quarter", or "Year" to determine column intervals.
     
@@ -87,15 +87,15 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
             pivot_df (pd.DataFrame): Pivot table including Grand Total.
             month_cols (list): Ordered list of Monthly columns (filtered by comparison type).
     """
-    months_order = filtered_df[[ColumnNames.MONTH, 'month_Str']].drop_duplicates().sort_values(ColumnNames.MONTH)
-    all_month_cols = months_order['month_Str'].tolist()
+    months_order = filtered_df[[ColumnNames.MONTH, ColumnNames.MONTH_STR]].drop_duplicates().sort_values(ColumnNames.MONTH)
+    all_month_cols = months_order[ColumnNames.MONTH_STR].tolist()
 
     if rollup:
         pivot_df = pd.pivot_table(
             filtered_df,
             values=ColumnNames.AMOUNT,
             index=ColumnNames.ACCOUNT_TYPE,
-            columns='month_Str',
+            columns=ColumnNames.MONTH_STR,
             aggfunc='sum',
             fill_value=0
         ).reset_index()
@@ -104,7 +104,7 @@ def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
             filtered_df,
             values=ColumnNames.AMOUNT,
             index=[ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY],
-            columns='month_Str',
+            columns=ColumnNames.MONTH_STR,
             aggfunc='sum',
             fill_value=0
         ).reset_index()
@@ -256,7 +256,7 @@ def validate_data(filtered_df):
     Returns:
         tuple: (is_valid, error_message)
     """
-    required_cols = [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, 'month_Str', ColumnNames.AMOUNT, ColumnNames.MONTH]
+    required_cols = [ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, ColumnNames.MONTH_STR, ColumnNames.AMOUNT, ColumnNames.MONTH]
     
     missing_cols = [col for col in required_cols if col not in filtered_df.columns]
     if missing_cols:
@@ -276,7 +276,7 @@ def show_pivot_table(filtered_df):
     Main function to display pivot table with KPIs, styling, Excel export, and optional transpose.
     
     Args:
-        filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, 'month_Str', and ColumnNames.AMOUNT.
+        filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
     """
     st.header("Summarized Table")
     
@@ -284,11 +284,11 @@ def show_pivot_table(filtered_df):
     is_valid, error_msg = validate_data(filtered_df)
     if not is_valid:
         st.error(f"Data Error: {error_msg}")
-        st.info("Please ensure your data contains: account_type, category, month_Str, amount, and Monthly columns.")
+        st.info("Please ensure your data contains: account_type, category, month_Str, amount, and month columns.")
         st.stop()
     
     # Check if we have enough data
-    unique_months = filtered_df['month_Str'].nunique()
+    unique_months = filtered_df[ColumnNames.MONTH_STR].nunique()
     if unique_months < 2:
         st.warning("Need at least 2 periods of data for meaningful comparisons.")
         st.info(f"Currently have data for {unique_months} period(s). Please add more data or adjust filters.")
