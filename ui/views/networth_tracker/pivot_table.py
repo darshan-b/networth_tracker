@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+from config import NetWorthConfig, UIConfig
 from constants import ColumnNames
 
 
@@ -42,7 +43,7 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
         month_cols (list): List of Monthly column names (already filtered by comparison type).
         comparison_type (str): "Monthly", "Quarter", or "Year" for primary comparison.
     """
-    st.markdown("### Key Metrics")
+    st.markdown(NetWorthConfig.KPI_KEY_METRICS_TITLE)
     grand_total_row = pivot_df.iloc[-1]
 
     last_value = grand_total_row[month_cols[-1]]
@@ -59,17 +60,17 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
     col1, col2, col3, col4 = st.columns(4)
     
     # Update label based on comparison type
-    comparison_label = {"Monthly": "MoM", "Quarterly": "QoQ", "Yearly": "YoY"}[comparison_type]
-    period_label = {"Monthly": "Monthly", "Quarterly": "Quarterly", "Yearly": "Yearly"}[comparison_type]
+    comparison_label = NetWorthConfig.COMPARISON_LABELS[comparison_type]
+    period_label = NetWorthConfig.PERIOD_LABELS[comparison_type]
     
     with col1:
-        st.metric("**Current Net Worth**", f"${last_value:,.0f}", f"{pct_change:,.2f}%" + f" ({comparison_label})", border=True)
+        st.metric(f"**{NetWorthConfig.KPI_CURRENT_NET_WORTH}**", UIConfig.CURRENCY_FORMAT.format(last_value), f"{pct_change:,.2f}%" + f" ({comparison_label})", border=True)
     with col2:
-        st.metric("**Total Change**", f"${total_progress:,.0f}", f"{total_progress_pct:,.2f}%", border=True)
+        st.metric(f"**{NetWorthConfig.KPI_TOTAL_CHANGE}**", UIConfig.CURRENCY_FORMAT.format(total_progress), f"{total_progress_pct:,.2f}%", border=True)
     with col3:
         st.metric(f"**{period_label.replace('ly', 's')} Tracked**", f"{len(month_cols)}", border=True, height='stretch')
     with col4:
-        st.metric("**Starting Net Worth**", f"${first_value:,.0f}", border=True, height='stretch')
+        st.metric(f"**{NetWorthConfig.KPI_STARTING_NET_WORTH}**", UIConfig.CURRENCY_FORMAT.format(first_value), border=True, height='stretch')
 
 
 def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
@@ -222,9 +223,9 @@ def export_to_excel(pivot_df):
         excel_df.to_excel(writer, index=False, sheet_name="Pivot Table")
     buffer.seek(0)
     st.download_button(
-        "Download Pivot Table (Excel)",
+        NetWorthConfig.PIVOT_DOWNLOAD_LABEL,
         data=buffer,
-        file_name="pivot_table.xlsx",
+        file_name=NetWorthConfig.PIVOT_DOWNLOAD_FILENAME,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
@@ -278,7 +279,7 @@ def show_pivot_table(filtered_df):
     Args:
         filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
     """
-    st.header("Summarized Table")
+    st.header(NetWorthConfig.PIVOT_TITLE)
     
     # Validate data
     is_valid, error_msg = validate_data(filtered_df)
@@ -301,7 +302,7 @@ def show_pivot_table(filtered_df):
     with col2:
         transpose_val = st.checkbox("Transpose pivot table?", value=False)
     with col3:
-        comparison_type = st.selectbox("Comparison Period:", ["Monthly", "Quarterly", "Yearly"], index=0)
+        comparison_type = st.selectbox("Comparison Period:", NetWorthConfig.COMPARISON_OPTIONS, index=0)
 
     # Create pivot table and compute KPIs
     pivot_df, month_cols = create_pivot_table(filtered_df, rollup_val, comparison_type)

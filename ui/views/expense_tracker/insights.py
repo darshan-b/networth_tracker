@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from config import ChartConfig
 from data.calculations import (
     calculate_top_merchants,
     calculate_spending_by_dow,
@@ -15,7 +16,7 @@ from data.calculations import (
 )
 from constants import ColumnNames
 import plotly.io as pio
-pio.templates.default = 'plotly_dark' 
+pio.templates.default = ChartConfig.TEMPLATE
 
 
 
@@ -436,7 +437,7 @@ def _render_cash_flow(df):
         ),
         hovermode='x unified',
         showlegend=False,
-        template = 'plotly_dark'
+        template = ChartConfig.TEMPLATE
     )
     container = st.container(border=True)  # Simple built-in border
 

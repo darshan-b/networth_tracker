@@ -132,6 +132,7 @@ def show_growth_over_time(filtered_df):
     # Prepare data based on period
     # -------------------------
     # Add period columns
+    filtered_df = filtered_df.copy()
     filtered_df['Date'] = pd.to_datetime(filtered_df[ColumnNames.MONTH])
     filtered_df['Quarter'] = filtered_df['Date'].dt.to_period('Q').astype(str)
     filtered_df['Year'] = filtered_df['Date'].dt.year.astype(str)

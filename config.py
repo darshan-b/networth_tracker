@@ -38,6 +38,11 @@ class ChartConfig:
     
     # Hover settings
     HOVER_MODE = 'x unified'
+    
+    # Streamlit chart rendering config
+    STREAMLIT_CONFIG = {
+        'responsive': True
+    }
 
 
 class ColorSchemes:
@@ -110,7 +115,7 @@ class UIConfig:
     TABLE_HEIGHT = 400
     
     # Chart settings
-    CHART_USE_CONTAINER_WIDTH = True
+    CHART_RENDER_CONFIG = ChartConfig.STREAMLIT_CONFIG
     
     # Progress bar thresholds
     BUDGET_WARNING_THRESHOLD = 80  # Percent
@@ -145,7 +150,7 @@ class DataConfig:
     
     # Required columns for different views
     EXPENSE_REQUIRED_COLUMNS = [ColumnNames.DATE, ColumnNames.AMOUNT, ColumnNames.CATEGORY, ColumnNames.MERCHANT, ColumnNames.ACCOUNT]
-    NETWORTH_REQUIRED_COLUMNS = [ColumnNames.MONTH, ColumnNames.AMOUNT, 'account_type', ColumnNames.CATEGORY]
+    NETWORTH_REQUIRED_COLUMNS = [ColumnNames.MONTH, ColumnNames.AMOUNT, ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY]
     
     # Column type mappings
     NUMERIC_COLUMNS = [ColumnNames.AMOUNT, ColumnNames.AMOUNT]
@@ -154,6 +159,58 @@ class DataConfig:
     # Data validation
     MIN_ROWS_FOR_ANALYSIS = 2
     MIN_PERIODS_FOR_TRENDS = 3
+
+
+class AppConfig:
+    """Top-level application text and layout configuration."""
+
+    TITLE = "Personal Finance Tracker"
+    PAGE_ICON = "/data/raw/cash-flow.png"
+    LAYOUT = "wide"
+    NAVIGATION_TITLE = "Navigation"
+    VIEW_SELECTOR_LABEL = "Select View"
+    GETTING_STARTED_TITLE = "Getting Started"
+    GETTING_STARTED_STEPS = [
+        "Add your local data files under `data/raw/`.",
+        "Launch the app with `streamlit run app.py`.",
+        "If a page is empty, check the expected file names and columns in `README.md`."
+    ]
+    VIEW_OPTIONS = [
+        "Net Worth Tracker",
+        "Expense Tracker",
+        "Stock Tracker",
+    ]
+    VIEW_HELP = "Choose between Net Worth tracking, Expense tracking, or Stock portfolio analysis"
+
+
+class NetWorthConfig:
+    """Net worth feature labels and shared options."""
+
+    TAB_NAMES = [
+        "Net Worth Over Time",
+        "Summarized Table",
+        "Dashboard",
+        "Growth Projections",
+        "Data Explorer"
+    ]
+    PIVOT_TITLE = "Summarized Table"
+    PIVOT_DOWNLOAD_LABEL = "Download Pivot Table (Excel)"
+    PIVOT_DOWNLOAD_FILENAME = "pivot_table.xlsx"
+    COMPARISON_OPTIONS = ["Monthly", "Quarterly", "Yearly"]
+    COMPARISON_LABELS = {
+        "Monthly": "MoM",
+        "Quarterly": "QoQ",
+        "Yearly": "YoY",
+    }
+    PERIOD_LABELS = {
+        "Monthly": "Monthly",
+        "Quarterly": "Quarterly",
+        "Yearly": "Yearly",
+    }
+    KPI_CURRENT_NET_WORTH = "Current Net Worth"
+    KPI_TOTAL_CHANGE = "Total Change"
+    KPI_STARTING_NET_WORTH = "Starting Net Worth"
+    KPI_KEY_METRICS_TITLE = "### Key Metrics"
 
 
 # Legacy support - map old config to new structure

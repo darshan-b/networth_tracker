@@ -9,6 +9,7 @@ import pandas as pd
 from typing import Optional
 from pygwalker.api.streamlit import StreamlitRenderer
 
+from config import NetWorthConfig
 from constants import ColumnNames
 from data.validators import validate_dataframe
 from ui.components.utils import safe_render_tab, render_empty_state
@@ -16,16 +17,6 @@ from ui.views.networth_tracker.growth_over_time import show_growth_over_time
 from ui.views.networth_tracker.pivot_table import show_pivot_table
 from ui.views.networth_tracker.dashboard import render_dashboard
 from ui.views.networth_tracker.growth_projections import show_growth_projections
-
-
-# Tab configuration
-TAB_NAMES = [
-    "Net Worth Over Time",
-    "Summarized Table",
-    "Dashboard",
-    "Growth Projections",
-    "Data Explorer"
-]
 
 
 @st.cache_resource
@@ -96,7 +87,7 @@ def show_networth_tracker(
     explorer_available = validate_dataframe(data, min_rows=1, context="")
     
     # Create navigation tabs
-    tabs = st.tabs(TAB_NAMES)
+    tabs = st.tabs(NetWorthConfig.TAB_NAMES)
     
     # Render Net Worth Over Time tab
     with tabs[0]:

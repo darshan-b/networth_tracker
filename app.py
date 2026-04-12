@@ -4,10 +4,9 @@ This module serves as the main entry point for the Personal Finance Tracker appl
 handling navigation between Net Worth Tracker, Expense Tracker, and Stock Tracker views.
 """
 
-from typing import Optional
-
 import streamlit as st
 
+from config import AppConfig
 from data.loader import (
     load_networth_data, 
     load_expense_transactions, 
@@ -26,28 +25,11 @@ from ui.views.networth_tracker_view import show_networth_tracker
 from ui.views.expense_tracker_view import show_expense_tracker
 from ui.views.stock_tracker_view import show_stock_tracker
 
-# Constants
-APP_TITLE = "Personal Finance Tracker"
-PAGE_ICON = '/data/raw/cash-flow.png'
-LAYOUT = "wide"
-
-# Navigation options
-NAV_NETWORTH = "Net Worth Tracker"
-NAV_EXPENSE = "Expense Tracker"
-NAV_STOCK = "Stock Tracker"
-NAV_CHAT = "Chat Assistant"
-
-
 def render_app_intro() -> None:
     """Render top-level guidance for first-time use."""
-    with st.expander("Getting Started", expanded=False):
-        st.markdown(
-            """
-- Add your local data files under `data/raw/`.
-- Launch the app with `streamlit run app.py`.
-- If a page is empty, check the expected file names and columns in `README.md`.
-"""
-        )
+    with st.expander(AppConfig.GETTING_STARTED_TITLE, expanded=False):
+        for step in AppConfig.GETTING_STARTED_STEPS:
+            st.markdown(f"- {step}")
 
 
 def render_networth_tracker() -> None:
@@ -213,31 +195,31 @@ def main() -> None:
     try:
         # Page configuration
         st.set_page_config(
-            page_title=APP_TITLE,
-            page_icon=PAGE_ICON,
-            layout=LAYOUT
+            page_title=AppConfig.TITLE,
+            page_icon=AppConfig.PAGE_ICON,
+            layout=AppConfig.LAYOUT
         )
     
         # Sidebar navigation
-        st.sidebar.title("Navigation")
+        st.sidebar.title(AppConfig.NAVIGATION_TITLE)
         app_mode = st.sidebar.radio(
-            "Select View",
-            [NAV_NETWORTH, NAV_EXPENSE, NAV_STOCK],
-            help="Choose between Net Worth tracking, Expense tracking, or Stock portfolio analysis"
+            AppConfig.VIEW_SELECTOR_LABEL,
+            AppConfig.VIEW_OPTIONS,
+            help=AppConfig.VIEW_HELP
         )
     
         st.sidebar.markdown("---")
     
         # Header
-        st.header(APP_TITLE)
+        st.header(AppConfig.TITLE)
         render_app_intro()
     
         # Route to appropriate view
-        if app_mode == NAV_NETWORTH:
+        if app_mode == AppConfig.VIEW_OPTIONS[0]:
             render_networth_tracker()
-        elif app_mode == NAV_EXPENSE:
+        elif app_mode == AppConfig.VIEW_OPTIONS[1]:
             render_expense_tracker()
-        elif app_mode == NAV_STOCK:
+        elif app_mode == AppConfig.VIEW_OPTIONS[2]:
             render_stock_tracker()
         else:
             st.error(f"Unknown view selected: {app_mode}")

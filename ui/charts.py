@@ -6,7 +6,7 @@ import pandas as pd
 from typing import Optional, List, Dict, Any
 from config import ChartConfig, ColorSchemes
 import plotly.io as pio
-pio.templates.default = 'plotly_dark' 
+pio.templates.default = ChartConfig.TEMPLATE
 from constants import ColumnNames
 import yfinance as yf
 
