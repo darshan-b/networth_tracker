@@ -1,107 +1,163 @@
-# Financial Dashboard
+# Personal Finance Tracker
 
-This Streamlit application provides a comprehensive view of your financial accounts, with multiple visualization modes and key metrics. It is designed to help you track month-over-month progress, view summaries by account_type and category, and quickly assess your financial position.
+This project is a Streamlit app for exploring three parts of a personal finance workflow from one place:
 
----
+- `Net Worth Tracker` for balance trends and breakdowns
+- `Expense Tracker` for transactions, budgets, insights, and cash flow
+- `Stock Tracker` for portfolio history and analysis
 
-## Tabs Overview
+The app is organized around local files in the repo, so the fastest way to get started is to place your data in the expected folders, create the environment, and run the Streamlit entry point.
 
-### Tab 1: Chart View
-- Displays interactive **bar and line charts** of selected accounts and categories.
-- Allows filtering by:
-  - **account_type** (multi-select)
-  - **category** (multi-select)
-  - **account** (multi-select)
-- Features:
-  - **monthly total line chart** showing month-over-month progress.
-  - Color-coded bars for account balances.
-  - Hover information shows exact values.
-- **Use case:** Quickly visualize trends and account balances over time.
+## Project Structure
 
----
+Key files and folders:
 
-### Tab 2: Pivot Table View
-- Displays a **pivot table** summarizing account balances by month.
-- Features:
-  - Option to **roll up categories** or view detailed account/category breakdown.
-  - Optional **transpose view** for easier horizontal reading.
-  - **Grand Total row** with month-over-month change percentages.
-  - **Color-coded cells** for positive (green) and negative (red) changes.
-  - Export functionality:
-    - Download the pivot table as **Excel**, with original numeric values (no HTML formatting).
-- **Use case:** Detailed tabular view to analyze month-by-month account balances.
+- `app.py` - main Streamlit entry point
+- `data/loader.py` - data loading and preprocessing
+- `data/raw/` - net worth, transaction, and stock input files
+- `data/` - optional budget files
+- `ui/views/` - view-level Streamlit pages and dashboards
 
----
+## Expected Data Files
 
-### Tab 3: month-over-month Progress
-- Displays **line chart(s)** showing financial progress over months.
-- Features:
-  - Shows **monthly totals** or account/category-specific lines.
-  - Optional **rolling month-over-month % change**.
-  - Markers and labels display values in **k units** for readability.
-  - Customizable text size and positioning.
-- **Use case:** Track the growth or decline of total balances or specific accounts over time.
+The current app looks for these files by default:
 
----
+### Required for Net Worth Tracker
 
-### Tab 4: Dashboard Overview
-- Combines multiple visualizations in a **2x2 grid** for a high-level summary.
-- Subplots include:
-  1. **monthly Total Line Chart**
-  2. **account_type Distribution (Bar Chart)**
-  3. **category Distribution (Pie Chart)**
-  4. **Treemap** showing account and category balances for the latest month
-     - Automatically adjusts **Liabilities** as negative values.
-     - Displays hover info with labels, values, and percentages.
-- Additional features:
-  - Interactive **filters** are consistent across all tabs.
-  - Hover and text formatting are preserved for clarity.
-- **Use case:** Get an at-a-glance overview of your financial position, distributions, and detailed breakdowns in one view.
+- `data/raw/Networth.csv`
 
----
+Expected columns:
 
-## Key Features
-- Fully interactive charts using **Plotly**.
-- **Dynamic filtering** by account_type, category, and individual account.
-- Download pivot tables in **Excel** format.
-- Color-coded insights for quick assessment:
-  - Green = positive growth
-  - Red = negative growth
-- Modular design with **4 tabs** for different analysis perspectives.
+- `month`
+- `amount`
+- `account_type`
+- `category`
 
----
+### Required for Expense Tracker
 
-## Getting Started
+- `data/raw/transactions.xlsx`
 
-Follow these steps to set up the environment and run the Streamlit app.
+Expected columns include:
 
-### 1. Clone the Repository (if needed)
+- `date`
+- `amount`
+- `category`
+- `merchant`
+- `account`
 
-```
+Notes:
+
+- If a `type` column is missing, the loader adds a default `expense` value.
+
+### Optional for Budgets
+
+The app will try these files in order:
+
+1. `data/budgets.csv`
+2. `data/budgets.xlsx`
+
+Expected columns:
+
+- `date`
+- `budget`
+
+If no budget file is found, the app falls back to hard-coded default budget values in [data/loader.py](/c:/Users/darsh/Documents/GitHub/networth_tracker/data/loader.py).
+
+### Required for Stock Tracker
+
+- `data/raw/stock_positions.xlsx`
+
+Expected sheets:
+
+- `trading_log`
+- `Historical_Tracking`
+
+The stock tracker expects historical data with columns such as:
+
+- `Date`
+- `ticker` or `Symbol`
+- `quantity`
+- `Brokerage`
+- `Account Name`
+- `Investment Type`
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
 git clone https://github.com/darshan-b/networth_tracker.git
 cd networth_tracker
 ```
 
-### 2. Create the Conda Environment
+### 2. Create the environment
 
-Make sure you have [Anaconda](https://www.anaconda.com/products/distribution) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) installed.
+This repo includes an environment file named `env.yml`:
 
-Create the environment from the provided `environment.yml` file:
-
-```
+```bash
 conda env create -f env.yml
 ```
 
-### 3. Activate the Environment
+### 3. Activate the environment
 
-```
+```bash
 conda activate networth
 ```
 
-### 4. Run the Streamlit App
+### 4. Add your data files
 
-```
-streamlit run src\networth.py
+Place your local data files in the expected locations:
+
+- `data/raw/Networth.csv`
+- `data/raw/transactions.xlsx`
+- `data/raw/stock_positions.xlsx`
+- optional: `data/budgets.csv` or `data/budgets.xlsx`
+
+### 5. Run the app
+
+Use the current Streamlit entry point:
+
+```bash
+streamlit run app.py
 ```
 
-The app will launch in your default web browser, typically at `http://localhost:8501`.
+The app usually opens at `http://localhost:8501`.
+
+## What You'll See
+
+### Net Worth Tracker
+
+- header filters for `account_type` and `category`
+- sidebar account filtering
+- net worth over time
+- summarized table
+- dashboard
+- growth projections
+- data explorer
+
+### Expense Tracker
+
+- date-based filtering
+- overview
+- transactions
+- budgets
+- insights
+- sankey chart
+
+### Stock Tracker
+
+- brokerage, account, and investment-type filters
+- date range filtering
+- overview
+- performance
+- allocation
+- risk analysis
+- transactions
+- cost basis
+
+## Common First-Run Issues
+
+- If a page says data is missing, confirm the file name and location match the paths above exactly.
+- If the stock tracker does not load, verify both the workbook name and sheet names.
+- If budgets do not appear, check whether your budget file is in `data/` instead of `data/raw/`.
+- If Streamlit fails to start, confirm the environment was created from `env.yml` and activated before running `streamlit run app.py`.
