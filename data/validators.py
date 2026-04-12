@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 from typing import List, Optional, Tuple
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 def validate_dataframe(

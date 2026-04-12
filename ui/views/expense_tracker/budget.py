@@ -6,7 +6,7 @@ Displays budget vs actual spending comparison and detailed budget progress track
 import streamlit as st
 import plotly.graph_objects as go
 from data.calculations import calculate_budget_comparison
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 def render_budgets_tab(df, budgets, num_months=1):

@@ -1,7 +1,7 @@
 """Application-wide configuration settings."""
 
 import plotly.express as px
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 class ChartConfig:

@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from config import StockTrackerConfig
-from constants import StockColumnNames
+from app_constants import StockColumnNames
 from ui.components.utils import render_tabs_safely
 from ui.components.filters import render_stock_header_filters, render_stock_sidebar_filters
 from ui.views.stock_tracker import (

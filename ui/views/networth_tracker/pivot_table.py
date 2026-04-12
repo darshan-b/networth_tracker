@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import io
 from config import NetWorthConfig, UIConfig
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 def calculate_progress(current_value, past_value):
@@ -75,12 +75,12 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
 
 def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
     """
-    Create a pivot table from filtered data, optionally rolled up by account_type,
+    Create a pivot table from filtered data, optionally rolled up by account type,
     and add a Grand Total row. Filter columns based on comparison type.
     
     Args:
-        filtered_df (pd.DataFrame): Filtered data containing ColumnNames.ACCOUNT_TYPE, ColumnNames.DATE, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
-        rollup (bool): If True, summarize by account_type only. Otherwise, include category.
+        filtered_df (pd.DataFrame): Filtered data containing account type, account subtype, period, and balance columns.
+        rollup (bool): If True, summarize by account type only. Otherwise, include account subtype.
         comparison_type (str): "Monthly", "Quarter", or "Year" to determine column intervals.
     
     Returns:
@@ -280,12 +280,13 @@ def show_pivot_table(filtered_df):
         filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
     """
     st.header(NetWorthConfig.PIVOT_TITLE)
+    st.caption("Compare balances by account type, or expand the table to include account subtype detail.")
     
     # Validate data
     is_valid, error_msg = validate_data(filtered_df)
     if not is_valid:
         st.error(f"Data Error: {error_msg}")
-        st.info("Please ensure your data contains: account_type, category, month_Str, amount, and month columns.")
+        st.info("Please ensure your data contains: account_type, account_subtype, as_of_date, balance, and the normalized period fields.")
         st.stop()
     
     # Check if we have enough data
@@ -298,7 +299,7 @@ def show_pivot_table(filtered_df):
     # Controls
     col1, col2, col3 = st.columns(3)
     with col1:
-        rollup_val = st.checkbox("Roll up categories?", value=True)
+        rollup_val = st.checkbox("Roll up account subtypes?", value=True)
     with col2:
         transpose_val = st.checkbox("Transpose pivot table?", value=False)
     with col3:

@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 import json
 import streamlit.components.v1 as components
-from constants import ColumnNames
+from app_constants import ColumnNames
 from data.calculations import calculate_expense_summary
 from ui.views.expense_tracker.overview import _render_summary_metrics
 

@@ -14,7 +14,7 @@ from data.calculations import (
     calculate_category_trends,
     _convert_to_absolute
 )
-from constants import ColumnNames
+from app_constants import ColumnNames
 import plotly.io as pio
 pio.templates.default = ChartConfig.TEMPLATE
 

@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from config import ChartConfig, ColorSchemes
 import plotly.io as pio
 pio.templates.default = ChartConfig.TEMPLATE
-from constants import ColumnNames
+from app_constants import ColumnNames
 import yfinance as yf
 
 def create_bar_chart(

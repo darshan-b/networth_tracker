@@ -9,7 +9,7 @@ import plotly.express as px
 from data.calculations import calculate_expense_summary, calculate_category_spending
 from ui.charts import create_donut_chart, create_line_chart
 import streamlit.components.v1 as components
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 # https://discuss.streamlit.io/t/changing-the-text-color-of-only-one-metric/35338/2

@@ -7,6 +7,7 @@ handling navigation between Net Worth Tracker, Expense Tracker, and Stock Tracke
 import streamlit as st
 
 from config import AppConfig
+from app_constants import ColumnNames
 from data.loader import (
     load_networth_data, 
     load_expense_transactions, 
@@ -44,11 +45,31 @@ def render_networth_tracker() -> None:
                 "The tracker could not find usable net worth data for this view.",
                 [
                     "Confirm `data/raw/Networth.csv` exists.",
-                    "Check that the file includes `month`, `amount`, `account_type`, and `category` columns.",
+                    "Check that the file includes `account_type`, `account_subtype`, `financial_institution`, `account_number`, `as_of_date`, and `balance` columns.",
                     "Refresh the app after updating the file."
                 ]
             )
             return
+
+        duplicate_account_names = (
+            data[ColumnNames.ACCOUNT].duplicated(keep=False).any()
+            if ColumnNames.ACCOUNT in data.columns
+            else False
+        )
+        has_account_id = (
+            ColumnNames.ACCOUNT_ID in data.columns
+            and data[ColumnNames.ACCOUNT_ID].fillna("").astype(str).str.strip().ne("").any()
+        )
+
+        if duplicate_account_names and not has_account_id:
+            st.warning(
+                "Duplicate account names were found without a unique account identifier. "
+                "Selections may still merge similarly named accounts."
+            )
+            st.caption(
+                "Add an `account_number`, `account_id`, or similar unique column to your net worth source file "
+                "so the tracker can distinguish accounts with the same display name."
+            )
 
         # Render header filters
         selected_account_types, selected_categories = render_networth_header_filters(data)
@@ -56,10 +77,10 @@ def render_networth_tracker() -> None:
         if not selected_account_types or not selected_categories:
             render_recovery_guide(
                 "Choose at least one filter value.",
-                "Net worth charts need at least one account type and one category selected.",
+                "Net worth charts need at least one account type and one account subtype selected.",
                 [
                     "Re-select one or more account types in the header.",
-                    "Re-select one or more categories in the header.",
+                    "Re-select one or more account subtypes in the header.",
                     "If no options appear, verify the source data contains those columns."
                 ],
                 message_type="info"
@@ -72,9 +93,9 @@ def render_networth_tracker() -> None:
         if not accounts:
             render_recovery_guide(
                 "No accounts match the current filters.",
-                "The selected account types and categories did not produce any matching accounts.",
+                "The selected account types and account subtypes did not produce any matching accounts.",
                 [
-                    "Broaden the account type or category filters.",
+                    "Broaden the account type or account subtype filters.",
                     "Check whether the selected combination exists in your source data."
                 ]
             )

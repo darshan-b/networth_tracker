@@ -10,7 +10,7 @@ from typing import Optional
 from pygwalker.api.streamlit import StreamlitRenderer
 
 from config import NetWorthConfig
-from constants import ColumnNames
+from app_constants import ColumnNames
 from data.validators import validate_dataframe
 from ui.components.utils import render_empty_state, render_tabs_safely
 from ui.views.networth_tracker.growth_over_time import show_growth_over_time

@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 import pandas as pd
 import streamlit as st
-from constants import ColumnNames, StockColumnNames, StockSheetNames
+from app_constants import ColumnNames, StockColumnNames, StockSheetNames
 
 
 # Directory configuration
@@ -38,6 +38,120 @@ def _show_load_error(filepath: Path, context: str, error: Exception) -> None:
     st.error(f"Unable to load {context.lower()}.")
     st.caption(f"Source: `{filepath}`")
     st.info(f"Check the file format, required columns, and sheet names. Details: {error}")
+
+
+def _mask_account_identifier(value: object) -> str:
+    """Return a short, user-friendly masked identifier."""
+    identifier = str(value).strip()
+    if not identifier or identifier.lower() == "nan":
+        return ""
+
+    suffix = identifier[-4:] if len(identifier) >= 4 else identifier
+    return f"{identifier}"
+
+
+def _join_account_parts(parts: list[str]) -> str:
+    """Join non-empty account label parts with a consistent separator."""
+    clean_parts = [part for part in parts if part]
+    return " | ".join(clean_parts)
+
+
+def _build_networth_account_identity(data: pd.DataFrame) -> pd.DataFrame:
+    """Create stable account key/display columns for net worth data."""
+    normalized = data.copy()
+
+    alias_map = {
+        "account type": ColumnNames.ACCOUNT_TYPE,
+        "account_type": ColumnNames.ACCOUNT_TYPE,
+        "account subtype": ColumnNames.CATEGORY,
+        "account_subtype": ColumnNames.CATEGORY,
+        "financial institution": ColumnNames.INSTITUTION,
+        "financial_institution": ColumnNames.INSTITUTION,
+        "institution": ColumnNames.INSTITUTION,
+        "brokerage": ColumnNames.INSTITUTION,
+        "as of date": ColumnNames.MONTH,
+        "as_of_date": ColumnNames.MONTH,
+        "balance": ColumnNames.AMOUNT,
+        "account id": ColumnNames.ACCOUNT_ID,
+        "account_id": ColumnNames.ACCOUNT_ID,
+        "account number": ColumnNames.ACCOUNT_ID,
+        "account_number": ColumnNames.ACCOUNT_ID,
+        "acct number": ColumnNames.ACCOUNT_ID,
+        "acct_number": ColumnNames.ACCOUNT_ID,
+        "acct id": ColumnNames.ACCOUNT_ID,
+        "acct_id": ColumnNames.ACCOUNT_ID,
+    }
+
+    rename_map = {}
+    for column in normalized.columns:
+        normalized_name = str(column).strip().lower()
+        if normalized_name in alias_map and alias_map[normalized_name] not in normalized.columns:
+            rename_map[column] = alias_map[normalized_name]
+
+    if rename_map:
+        normalized = normalized.rename(columns=rename_map)
+
+    if ColumnNames.ACCOUNT not in normalized.columns:
+        if ColumnNames.CATEGORY in normalized.columns:
+            normalized[ColumnNames.ACCOUNT] = normalized[ColumnNames.CATEGORY]
+        elif ColumnNames.INSTITUTION in normalized.columns:
+            normalized[ColumnNames.ACCOUNT] = normalized[ColumnNames.INSTITUTION]
+        else:
+            normalized[ColumnNames.ACCOUNT] = "Unknown Account"
+
+    account_series = normalized[ColumnNames.ACCOUNT].fillna("Unknown Account").astype(str).str.strip()
+    normalized[ColumnNames.ACCOUNT] = account_series
+
+    if ColumnNames.ACCOUNT_ID in normalized.columns:
+        account_id_series = normalized[ColumnNames.ACCOUNT_ID].fillna("").astype(str).str.strip()
+    else:
+        account_id_series = pd.Series("", index=normalized.index, dtype="object")
+
+    institution_series = (
+        normalized[ColumnNames.INSTITUTION].fillna("").astype(str).str.strip()
+        if ColumnNames.INSTITUTION in normalized.columns
+        else pd.Series("", index=normalized.index, dtype="object")
+    )
+    masked_ids = account_id_series.apply(_mask_account_identifier)
+
+    if (account_id_series != "").any():
+        key_suffix = institution_series.where(institution_series != "", masked_ids)
+        normalized[ColumnNames.ACCOUNT_KEY] = account_series.where(
+            account_id_series == "",
+            account_series + "::" + key_suffix + "::" + account_id_series,
+        )
+        normalized[ColumnNames.ACCOUNT_DISPLAY] = [
+            _join_account_parts([account_name, institution, masked_id])
+            for account_name, institution, masked_id in zip(
+                account_series,
+                institution_series,
+                masked_ids,
+            )
+        ]
+    elif (institution_series != "").any():
+        normalized[ColumnNames.ACCOUNT_KEY] = [
+            _join_account_parts([account_name, institution])
+            for account_name, institution in zip(account_series, institution_series)
+        ]
+        normalized[ColumnNames.ACCOUNT_DISPLAY] = normalized[ColumnNames.ACCOUNT_KEY]
+    else:
+        normalized[ColumnNames.ACCOUNT_KEY] = account_series
+        normalized[ColumnNames.ACCOUNT_DISPLAY] = account_series
+
+    if ColumnNames.CATEGORY in normalized.columns:
+        normalized[ColumnNames.CATEGORY] = (
+            normalized[ColumnNames.CATEGORY].fillna("Unknown").astype(str).str.strip()
+        )
+    if ColumnNames.ACCOUNT_TYPE in normalized.columns:
+        normalized[ColumnNames.ACCOUNT_TYPE] = (
+            normalized[ColumnNames.ACCOUNT_TYPE].fillna("Unknown").astype(str).str.strip()
+        )
+    if ColumnNames.INSTITUTION in normalized.columns:
+        normalized[ColumnNames.INSTITUTION] = institution_series
+    if ColumnNames.ACCOUNT_ID in normalized.columns:
+        normalized[ColumnNames.ACCOUNT_ID] = account_id_series
+
+    return normalized
 
 
 def _load_excel_sheet(filepath: Path, sheet_name: str, context: str) -> pd.DataFrame:
@@ -97,6 +211,7 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
     
     try:
         data = pd.read_csv(filepath)
+        data = _build_networth_account_identity(data)
         
         # Process date and amount columns
         data[ColumnNames.MONTH] = pd.to_datetime(data[ColumnNames.MONTH])

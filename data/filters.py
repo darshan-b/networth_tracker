@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple, Union
 import pandas as pd
 import streamlit as st
 
-from constants import ColumnNames
+from app_constants import ColumnNames
 # Constants for date range options
 DATE_RANGE_LAST_7 = "Last 7 days"
 DATE_RANGE_LAST_14 = "Last 14 days"
@@ -25,6 +25,7 @@ DATE_RANGE_CUSTOM = "Custom range"
 COL_ACCOUNT_TYPE = ColumnNames.ACCOUNT_TYPE
 COL_CATEGORY = ColumnNames.CATEGORY
 COL_ACCOUNT = ColumnNames.ACCOUNT
+COL_ACCOUNT_KEY = ColumnNames.ACCOUNT_KEY
 COL_DATE = ColumnNames.DATE
 COL_CATEGORY_EXPENSE = ColumnNames.CATEGORY
 
@@ -47,10 +48,11 @@ def filter_data(data: pd.DataFrame, account_types: List[str], categories: List[s
     """
     try: 
         # Apply filters
+        account_column = COL_ACCOUNT_KEY if COL_ACCOUNT_KEY in data.columns else COL_ACCOUNT
         filtered_df = data[
             data[COL_ACCOUNT_TYPE].isin(account_types) &
             data[COL_CATEGORY].isin(categories) &
-            data[COL_ACCOUNT].isin(accounts)
+            data[account_column].isin(accounts)
         ]
         
         return filtered_df
@@ -77,13 +79,14 @@ def get_filtered_accounts(data: pd.DataFrame, account_types: List[str], categori
     """
     try:
         # Filter accounts
+        account_column = COL_ACCOUNT_KEY if COL_ACCOUNT_KEY in data.columns else COL_ACCOUNT
         if account_types and categories:
             accounts = data[
                 data[COL_ACCOUNT_TYPE].isin(account_types) & 
                 data[COL_CATEGORY].isin(categories)
-            ][COL_ACCOUNT].unique().tolist()
+            ][account_column].unique().tolist()
         else:
-            accounts = data[COL_ACCOUNT].unique().tolist()
+            accounts = data[account_column].unique().tolist()
         
         return accounts
         

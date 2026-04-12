@@ -6,9 +6,8 @@ import numpy as np
 import io
 import plotly.express as px
 import plotly.graph_objects as go
-from scipy import stats
 from config import ChartConfig
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 def round_to_k(amount):
@@ -19,6 +18,11 @@ def round_to_k(amount):
         return f"{amount:.0f}"
 
 
+def _format_currency(amount):
+    """Format values consistently for summary text."""
+    return f"${amount:,.0f}"
+
+
 def show_growth_over_time(filtered_df):
     """
     Main function to display the detailed view tab.
@@ -26,7 +30,10 @@ def show_growth_over_time(filtered_df):
     Args:
         filtered_df: Filtered dataset based on user selections
     """
-    st.header("Net Worth Over Time")
+    st.subheader("Net Worth Over Time")
+    st.caption(
+        "Track how your balance has changed over time, then adjust the view only when you need a deeper cut."
+    )
     
     # Validate data
     if filtered_df.empty:
@@ -36,7 +43,7 @@ def show_growth_over_time(filtered_df):
     # -------------------------
     # Summary Statistics
     # -------------------------
-    st.subheader("Quick Stats")
+    st.markdown("### Trend Snapshot")
     
     totals_df = filtered_df.groupby([ColumnNames.MONTH, ColumnNames.MONTH_STR], as_index=False)[ColumnNames.AMOUNT].sum()
     
@@ -67,24 +74,32 @@ def show_growth_over_time(filtered_df):
         else:
             velocity_text = "N/A"
         
-        # Find best and worst months
-        best_idx = totals_df[ColumnNames.AMOUNT].idxmax()
-        worst_idx = totals_df[ColumnNames.AMOUNT].idxmin()
-        best_month = totals_df.loc[best_idx, ColumnNames.MONTH_STR]
-        worst_month = totals_df.loc[worst_idx, ColumnNames.MONTH_STR]
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
+        col1, col2, col3, col4 = st.columns(4)
+
         with col1:
-            st.metric("**Current Net Worth**", f"${current_nw:,.0f}", f"{mom_change:,.0f} ({mom_pct:+.2f}%)", border=True)
+            st.metric(
+                "**Current Net Worth**",
+                _format_currency(current_nw),
+                f"{mom_change:,.0f} ({mom_pct:+.2f}%)",
+                border=True,
+            )
         with col2:
-            st.metric("**Total Growth**", f"${total_change:,.0f}", f"{total_pct:+.2f}%", border=True)
+            st.metric(
+                "**Total Growth**",
+                _format_currency(total_change),
+                f"{total_pct:+.2f}%",
+                border=True,
+            )
         with col3:
             st.metric("**Months Tracked**", len(totals_df), border=True, height='stretch')
         with col4:
-            st.metric("**Growth Momentum**", velocity_text, border=True, height='stretch')
-        with col5:
-            st.metric("**Average Monthly Growth**", f"${avg_monthly_growth:,.0f}", border=True, height='stretch')
+            st.metric(
+                "**Average Monthly Growth**",
+                _format_currency(avg_monthly_growth),
+                velocity_text,
+                border=True,
+                height='stretch',
+            )
     else:
         st.warning("Need at least 2 months of data for analysis.")
         return
@@ -94,17 +109,27 @@ def show_growth_over_time(filtered_df):
     # -------------------------
     # Controls
     # -------------------------
-    col1, col2, col3, col4 = st.columns([2, 2, 1.5, 1])
-    clean_category =  ColumnNames.CATEGORY.title().replace('_', ' ')
-    clean_account = ColumnNames.ACCOUNT_TYPE.title().replace('_', ' ')
-    breakdown_options = {ColumnNames.CATEGORY:clean_category, ColumnNames.ACCOUNT_TYPE:clean_account}
+    st.markdown("### View Controls")
+    st.caption("Keep the default view for a clean read, or refine the story with a different breakdown and comparison period.")
+
+    col1, col2, col3, col4 = st.columns([1.5, 1.5, 1.2, 0.8])
+    breakdown_labels = {
+        ColumnNames.CATEGORY: "Account Subtype",
+        ColumnNames.ACCOUNT_TYPE: "Account Type",
+        ColumnNames.INSTITUTION: "Financial Institution",
+        "type_subtype": "Account Type + Account Subtype",
+    }
     
     with col1:
-        breakdown_by = st.selectbox("**Breakdown By:**", [clean_category, clean_account, "Both"], key="breakdown")
+        breakdown_by = st.selectbox(
+            "**Breakdown By:**",
+            list(breakdown_labels.values()),
+            key="breakdown",
+        )
     
     with col2:
         view_preset = st.selectbox(
-            "Chart View:", 
+            "Chart Style:",
             ["Standard", "With Trend Line", "With 3-month Average"],
             index=1,
             help="Standard: Basic stacked bars | Trend Line: Adds net worth trend | 3-month Average: Shows smoothed trend"
@@ -121,7 +146,7 @@ def show_growth_over_time(filtered_df):
     with col4:
         with st.popover("Settings"):
             st.markdown("### Display Options")
-            show_period_pct = st.checkbox("Show % Change", value=True)
+            show_period_pct = st.checkbox("Show % change", value=True)
             highlight_extremes = st.checkbox("Highlight Best/Worst", value=False)
             show_milestones = st.checkbox("Show Milestones", value=False)
     
@@ -179,16 +204,23 @@ def show_growth_over_time(filtered_df):
     period_str_col = 'Period_Str'
     
     # Aggregate data by selected period
-    if breakdown_by == breakdown_options[ColumnNames.CATEGORY]:
+    if breakdown_by == breakdown_labels[ColumnNames.CATEGORY]:
         agg_df = period_filtered_df.groupby([period_col, period_str_col, ColumnNames.CATEGORY], as_index=False)[ColumnNames.AMOUNT].sum()
         color_column = ColumnNames.CATEGORY
-    elif breakdown_by == breakdown_options[ColumnNames.ACCOUNT_TYPE]:
+        legend_title = breakdown_labels[ColumnNames.CATEGORY]
+    elif breakdown_by == breakdown_labels[ColumnNames.ACCOUNT_TYPE]:
         agg_df = period_filtered_df.groupby([period_col, period_str_col, ColumnNames.ACCOUNT_TYPE], as_index=False)[ColumnNames.AMOUNT].sum()
         color_column = ColumnNames.ACCOUNT_TYPE
-    else:  # Both
-        period_filtered_df['Group'] = period_filtered_df[ColumnNames.ACCOUNT_TYPE] + ' - ' + period_filtered_df[ColumnNames.CATEGORY]
+        legend_title = breakdown_labels[ColumnNames.ACCOUNT_TYPE]
+    elif breakdown_by == breakdown_labels[ColumnNames.INSTITUTION]:
+        agg_df = period_filtered_df.groupby([period_col, period_str_col, ColumnNames.INSTITUTION], as_index=False)[ColumnNames.AMOUNT].sum()
+        color_column = ColumnNames.INSTITUTION
+        legend_title = breakdown_labels[ColumnNames.INSTITUTION]
+    else:
+        period_filtered_df['Group'] = period_filtered_df[ColumnNames.ACCOUNT_TYPE] + ' / ' + period_filtered_df[ColumnNames.CATEGORY]
         agg_df = period_filtered_df.groupby([period_col, period_str_col, 'Group'], as_index=False)[ColumnNames.AMOUNT].sum()
         color_column = 'Group'
+        legend_title = breakdown_labels["type_subtype"]
     
     # Calculate totals by period
     totals_df = agg_df.groupby([period_col, period_str_col], as_index=False)[ColumnNames.AMOUNT].sum()
@@ -340,10 +372,16 @@ def show_growth_over_time(filtered_df):
             )
         )
     
+    st.divider()
+    st.markdown("### Trend View")
+    st.caption(
+        f"Showing a {period_comparison.lower()} perspective grouped by {breakdown_by.lower()}."
+    )
+
     # Layout
     period_label = period_comparison[:-2] if period_comparison != "Monthly" else "Month"
     fig.update_layout(
-        title={'text':f"Net Worth Over Time - {period_comparison} View", 'x':0.45, 'xanchor':'center'},
+        title={'text':f"{period_comparison} Net Worth Trend", 'x':0.45, 'xanchor':'center'},
         title_font={'size':20},
         xaxis=dict(
             tickvals=totals_df[period_col], 
@@ -352,12 +390,12 @@ def show_growth_over_time(filtered_df):
             tickangle=90 if period_comparison == "Monthly" else 45
         ),
         yaxis=dict(title='Amount ($)', tickprefix='$', tickformat=',.0f'),
-        legend_title=breakdown_by,
+        legend_title=legend_title,
         hovermode="x unified",
         height=700
     )
     
-    st.plotly_chart(fig, config={"responsive": True})
+    st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
     
     # -------------------------
     # Chart Download
@@ -366,11 +404,13 @@ def show_growth_over_time(filtered_df):
     fig.write_html(buffer, full_html=False)
     buffer.seek(0)
     
-    st.download_button(
-        label="Download Chart as HTML",
-        data=buffer.getvalue(),
-        file_name="net_worth_over_time.html",
-        mime="text/html"
-    )
+    with st.expander("Export Chart"):
+        st.caption("Download this view as a standalone HTML file.")
+        st.download_button(
+            label="Download Chart as HTML",
+            data=buffer.getvalue(),
+            file_name="net_worth_over_time.html",
+            mime="text/html"
+        )
 
 

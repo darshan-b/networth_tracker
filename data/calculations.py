@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-from constants import AccountTypes, ColumnNames
+from app_constants import AccountTypes, ColumnNames
 from config import AnalysisConfig
 
 
@@ -74,8 +74,8 @@ def calculate_account_info(
     """Calculate current values and trends for each account.
     
     Args:
-        data: Full dataset with columns [ColumnNames.ACCOUNT, ColumnNames.MONTH, ColumnNames.AMOUNT, 'account_type']
-        accounts: List of account names to analyze
+        data: Full dataset with account identity columns and period balances
+        accounts: List of account selection keys to analyze
         
     Returns:
         Dictionary mapping account names to info dictionaries containing:
@@ -99,11 +99,17 @@ def calculate_account_info(
         st.warning("No accounts provided for calculation")
         return {}
     
+    account_column = (
+        ColumnNames.ACCOUNT_KEY
+        if ColumnNames.ACCOUNT_KEY in data.columns
+        else ColumnNames.ACCOUNT
+    )
+
     account_info = {}
     
     for account in accounts:
         try:
-            acct_data = data[data[ColumnNames.ACCOUNT] == account].sort_values(ColumnNames.MONTH)
+            acct_data = data[data[account_column] == account].sort_values(ColumnNames.MONTH)
             
             if acct_data.empty:
                 continue
@@ -127,6 +133,11 @@ def calculate_account_info(
                 continue
             
             account_info[account] = {
+                'label': acct_data.iloc[-1].get(ColumnNames.ACCOUNT_DISPLAY, acct_data.iloc[-1][ColumnNames.ACCOUNT]),
+                'account_name': acct_data.iloc[-1][ColumnNames.ACCOUNT],
+                'account_subtype': acct_data.iloc[-1].get(ColumnNames.CATEGORY, acct_data.iloc[-1][ColumnNames.ACCOUNT]),
+                'institution': acct_data.iloc[-1].get(ColumnNames.INSTITUTION, ""),
+                'account_number': acct_data.iloc[-1].get(ColumnNames.ACCOUNT_ID, ""),
                 'value': current_val,
                 'change': change,
                 'trend': trend,

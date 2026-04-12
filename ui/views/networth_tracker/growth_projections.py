@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from constants import ColumnNames
+from app_constants import ColumnNames
 
 
 def calculate_months_to_goal(current_value, goal_amount, monthly_contribution, annual_return_rate, compound_freq='monthly'):

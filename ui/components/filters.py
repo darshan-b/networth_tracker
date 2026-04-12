@@ -16,7 +16,7 @@ from data.filters import (
     filter_by_date_range,
     DATE_RANGE_CUSTOM
 )
-from constants import ColumnNames, StockColumnNames
+from app_constants import ColumnNames, StockColumnNames
 
 # Constants
 MIN_ACCOUNTS_WARNING = 0
@@ -25,7 +25,7 @@ SEARCH_PLACEHOLDER = "Type to filter..."
 
 
 def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[str]]:
-    """Render account_type and category segmented controls for Net Worth Tracker.
+    """Render account type and subtype segmented controls for Net Worth Tracker.
     
     Args:
         data: Full dataset
@@ -52,29 +52,29 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
             return [], []
         
         selected_account_types = st.segmented_control(
-            ColumnNames.ACCOUNT_TYPE.title().replace('_', ' '), 
+            "Account Type",
             options=acct_types, 
             selection_mode="multi", 
             default=acct_types,
-            help="Filter by Account Type (e.g., Checking, Savings, Investment)"
+            help="Filter by broad account type such as Cash, Brokerage, or Liability."
         )
         
-        # Render category filter based on selected account_types
+        # Render account subtype filter based on selected account types
         if selected_account_types:
             categories = sorted(data[data[ColumnNames.ACCOUNT_TYPE].isin(selected_account_types)][ColumnNames.CATEGORY].unique())
         else:
             categories = sorted(data[ColumnNames.CATEGORY].unique())
         
         if not categories:
-            st.warning("No Categories available for the selected Account Type.")
+            st.warning("No account subtypes are available for the selected account type.")
             return selected_account_types or [], []
         
         selected_categories = st.segmented_control(
-            ColumnNames.CATEGORY.title(), 
+            "Account Subtype",
             options=categories, 
             selection_mode="multi", 
             default=categories,
-            help="Filter by Category (e.g., Banking, Retirement, Real Estate)"
+            help="Filter by account subtype such as Checking, Savings, Taxable, or Credit Card."
         )
         
         return selected_account_types or [], selected_categories or []
@@ -85,8 +85,8 @@ def render_networth_header_filters(data: pd.DataFrame) -> Tuple[List[str], List[
 
 
 def render_networth_sidebar_filters(
-    data: pd.DataFrame, 
-    accounts: List[str], 
+    data: pd.DataFrame,
+    accounts: List[str],
     account_info: Dict[str, Dict]
 ) -> List[str]:
     """Render sidebar with account selection and search for Net Worth Tracker.
@@ -103,169 +103,162 @@ def render_networth_sidebar_filters(
         ValueError: If inputs are invalid
     """
     try:
-        st.sidebar.markdown("### Account Filter")
-        
-        # Validate inputs
+        st.sidebar.markdown("### Account Selector")
+
         if data is None or data.empty:
             st.sidebar.error("No data available.")
             return []
-        
+
         if not accounts:
-            st.sidebar.warning("No Accounts available to display.")
+            st.sidebar.warning("No accounts available to display.")
             return []
-        
-        # Initialize session state
+
         if 'selected_accounts' not in st.session_state:
             st.session_state.selected_accounts = accounts.copy()
-        
+
         if 'expander_states' not in st.session_state:
             st.session_state.expander_states = {}
-        
-        # Search box
+
         search = st.sidebar.text_input(
             "Search Accounts",
             "",
             placeholder=SEARCH_PLACEHOLDER,
-            help="Filter Accounts by Name"
+            help="Search by account subtype, financial institution, or account number."
         )
-        
-        # Filter accounts based on search
+
+        account_labels = {
+            account_key: account_info.get(account_key, {}).get("label", account_key)
+            for account_key in accounts
+        }
+
         if search:
-            filtered_accounts = [a for a in accounts if search.lower() in a.lower()]
+            search_term = search.lower()
+            filtered_accounts = [
+                account_key
+                for account_key in accounts
+                if search_term in account_labels[account_key].lower()
+            ]
             if not filtered_accounts:
-                st.sidebar.warning(f"No Accounts match '{search}'")
+                st.sidebar.warning(f"No accounts match '{search}'")
         else:
             filtered_accounts = accounts
-        
-        # Group accounts by type
+
         grouped_accounts = {}
-        for acc in filtered_accounts:
-            acct_type = account_info.get(acc, {}).get('type', 'Unknown')
-            if acct_type not in grouped_accounts:
-                grouped_accounts[acct_type] = []
-            grouped_accounts[acct_type].append(acc)
-        
+        for account_key in filtered_accounts:
+            broad_type = account_info.get(account_key, {}).get('type', 'Unknown')
+            grouped_accounts.setdefault(broad_type, []).append(account_key)
+
         if not grouped_accounts:
-            st.sidebar.warning("No Accounts to display.")
+            st.sidebar.warning("No accounts to display.")
             return []
-        
-        # Initialize expander states for new account_types
-        for acct_type in grouped_accounts.keys():
-            if acct_type not in st.session_state.expander_states:
-                st.session_state.expander_states[acct_type] = DEFAULT_EXPANDER_STATE
-        
-        # Check if most expanders are expanded
+
+        for broad_type in grouped_accounts.keys():
+            if broad_type not in st.session_state.expander_states:
+                st.session_state.expander_states[broad_type] = DEFAULT_EXPANDER_STATE
+
         expanded_count = sum(1 for state in st.session_state.expander_states.values() if state)
         total_count = len(st.session_state.expander_states)
         mostly_expanded = expanded_count > total_count / 2 if total_count > 0 else True
-        
-        # Quick actions
+
         col1, col2, col3 = st.sidebar.columns(3)
         with col1:
-            if st.button("Select All", width="stretch", help="Select all Accounts"):
+            if st.button("Select All", width="stretch", help="Select all accounts"):
                 st.session_state.selected_accounts = accounts.copy()
-                for acc in accounts:
-                    st.session_state[f"check_{acc}"] = True
+                for account_key in accounts:
+                    st.session_state[f"check_{account_key}"] = True
                 st.rerun()
-                
+
         with col2:
-            if st.button("Clear All", width="stretch", help="Deselect all Accounts"):
+            if st.button("Clear All", width="stretch", help="Deselect all accounts"):
                 st.session_state.selected_accounts = []
-                for acc in accounts:
-                    st.session_state[f"check_{acc}"] = False
+                for account_key in accounts:
+                    st.session_state[f"check_{account_key}"] = False
                 st.rerun()
-                
+
         with col3:
             toggle_label = "Collapse" if mostly_expanded else "Expand"
             if st.button(toggle_label, width="stretch", help=f"{toggle_label} all sections"):
                 new_state = not mostly_expanded
-                for acct_type in grouped_accounts.keys():
-                    st.session_state.expander_states[acct_type] = new_state
+                for broad_type in grouped_accounts.keys():
+                    st.session_state.expander_states[broad_type] = new_state
                 st.rerun()
-        
-        # Grouped display
-        for acct_type in sorted(grouped_accounts.keys()):
-            accts = grouped_accounts[acct_type]
-            is_expanded = st.session_state.expander_states.get(acct_type, DEFAULT_EXPANDER_STATE)
-            
-            with st.sidebar.expander(f"{acct_type} ({len(accts)})", expanded=is_expanded):
-                # Group action buttons
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Select All", width="stretch", key=f"all_{acct_type}"):
+
+        for broad_type in sorted(grouped_accounts.keys()):
+            account_keys = grouped_accounts[broad_type]
+            is_expanded = st.session_state.expander_states.get(broad_type, DEFAULT_EXPANDER_STATE)
+
+            with st.sidebar.expander(f"{broad_type} ({len(account_keys)})", expanded=is_expanded):
+                action_col1, action_col2 = st.columns(2)
+                with action_col1:
+                    if st.button("Select All", width="stretch", key=f"all_{broad_type}"):
                         current = set(st.session_state.selected_accounts)
-                        current.update(accts)
+                        current.update(account_keys)
                         st.session_state.selected_accounts = list(current)
-                        for acc in accts:
-                            st.session_state[f"check_{acc}"] = True
+                        for account_key in account_keys:
+                            st.session_state[f"check_{account_key}"] = True
                         st.rerun()
-                        
-                with col2:
-                    if st.button("Clear All", width="stretch", key=f"none_{acct_type}"):
+
+                with action_col2:
+                    if st.button("Clear All", width="stretch", key=f"none_{broad_type}"):
                         st.session_state.selected_accounts = [
-                            a for a in st.session_state.selected_accounts if a not in accts
+                            account_key
+                            for account_key in st.session_state.selected_accounts
+                            if account_key not in account_keys
                         ]
-                        for acc in accts:
-                            st.session_state[f"check_{acc}"] = False
+                        for account_key in account_keys:
+                            st.session_state[f"check_{account_key}"] = False
                         st.rerun()
-                
-                # Individual account checkboxes
-                for acc in accts:
-                    info = account_info.get(acc, {})
+
+                for account_key in account_keys:
+                    info = account_info.get(account_key, {})
                     value = info.get('value', 0)
                     trend = info.get('trend', '->')
-                    label = f"{acc} ({trend} ${value:,.0f})" if info else acc
-                    is_selected = acc in st.session_state.selected_accounts
-                    
-                    if st.checkbox(label, value=is_selected, key=f"check_{acc}"):
-                        if acc not in st.session_state.selected_accounts:
-                            st.session_state.selected_accounts.append(acc)
+                    display_name = info.get('label', account_key)
+                    label = f"{display_name} ({trend} ${value:,.0f})" if info else display_name
+                    is_selected = account_key in st.session_state.selected_accounts
+
+                    if st.checkbox(label, value=is_selected, key=f"check_{account_key}"):
+                        if account_key not in st.session_state.selected_accounts:
+                            st.session_state.selected_accounts.append(account_key)
                     else:
-                        if acc in st.session_state.selected_accounts:
-                            st.session_state.selected_accounts.remove(acc)
-        
-        # Summary statistics
+                        if account_key in st.session_state.selected_accounts:
+                            st.session_state.selected_accounts.remove(account_key)
+
         st.sidebar.divider()
         count = len(st.session_state.selected_accounts)
         total = len(accounts)
-        
+
         if count > MIN_ACCOUNTS_WARNING:
             selected_value = sum(
-                account_info.get(a, {}).get('value', 0)
-                for a in st.session_state.selected_accounts
+                account_info.get(account_key, {}).get('value', 0)
+                for account_key in st.session_state.selected_accounts
             )
             total_value = sum(
-                account_info.get(a, {}).get('value', 0) 
-                for a in accounts
+                account_info.get(account_key, {}).get('value', 0)
+                for account_key in accounts
             )
-            
-            # Display selection status
+
             if count == total:
                 st.sidebar.success(f"{count} of {total} selected")
             else:
                 st.sidebar.info(f"{count} of {total} selected")
-            
-            # Display value metrics
-            col1, col2 = st.sidebar.columns(2)
-            with col1:
+
+            summary_col1, summary_col2 = st.sidebar.columns(2)
+            with summary_col1:
                 st.metric("Selected", f"${selected_value:,.0f}")
-            with col2:
+            with summary_col2:
                 pct = (selected_value / total_value * 100) if total_value != 0 else 0
                 st.metric("% of Total", f"{pct:.1f}%")
         else:
-            st.sidebar.error("No Accounts selected")
+            st.sidebar.error("No accounts selected")
 
         if search:
             st.sidebar.caption(f"{len(filtered_accounts)} matches")
-        
-        # Search results info
-        if search:
-            st.sidebar.caption(f"🔍 {len(filtered_accounts)} matches")
-        
+
         return st.session_state.selected_accounts
-        
+
     except Exception as e:
-        st.sidebar.error(f"Error rendering Account filters: {str(e)}")
+        st.sidebar.error(f"Error rendering account filters: {str(e)}")
         return []
 
 

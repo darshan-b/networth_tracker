@@ -5,7 +5,7 @@ Provides transaction filtering, search, and detailed view of all transactions.
 
 import streamlit as st
 import pandas as pd
-from constants import ColumnNames
+from app_constants import ColumnNames
 from pivottablejs import pivot_ui
 import streamlit.components.v1 as components
 import json

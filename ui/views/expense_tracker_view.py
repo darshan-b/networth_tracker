@@ -9,7 +9,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Optional
 
-from constants import ColumnNames
+from app_constants import ColumnNames
 from data.filters import filter_expenses
 from data.validators import validate_dataframe, validate_budget_config, validate_positive_integer
 from ui.components.utils import render_tabs_safely, render_empty_state

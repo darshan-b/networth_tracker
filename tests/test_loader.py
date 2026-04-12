@@ -1,6 +1,6 @@
 import pandas as pd
 
-from constants import StockColumnNames
+from app_constants import StockColumnNames
 from data.loader import _normalize_stock_columns
 
 
