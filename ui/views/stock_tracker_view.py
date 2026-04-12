@@ -12,6 +12,7 @@ import streamlit as st
 
 from config import StockTrackerConfig
 from constants import StockColumnNames
+from ui.components.utils import render_tabs_safely
 from ui.components.filters import render_stock_header_filters, render_stock_sidebar_filters
 from ui.views.stock_tracker import (
     allocation,
@@ -250,25 +251,40 @@ def show_stock_tracker(
             date_range,
         )
 
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(StockTrackerConfig.TAB_NAMES)
+        tab_configs = [
+            {
+                'render_func': overview.render,
+                'args': [historical_filtered, filtered_symbols, trading_log_filtered],
+                'context': 'overview',
+            },
+            {
+                'render_func': performance.render,
+                'args': [historical_filtered, filtered_symbols],
+                'context': 'performance',
+            },
+            {
+                'render_func': allocation.render,
+                'args': [historical_filtered],
+                'context': 'allocation',
+            },
+            {
+                'render_func': risk_analysis.render,
+                'args': [historical_filtered, filtered_symbols],
+                'context': 'risk analysis',
+            },
+            {
+                'render_func': transactions.render,
+                'args': [trading_log_filtered],
+                'context': 'transactions',
+            },
+            {
+                'render_func': cost_basis.render,
+                'args': [historical_filtered],
+                'context': 'cost basis',
+            },
+        ]
 
-        with tab1:
-            overview.render(historical_filtered, filtered_symbols, trading_log_filtered)
-
-        with tab2:
-            performance.render(historical_filtered, filtered_symbols)
-
-        with tab3:
-            allocation.render(historical_filtered)
-
-        with tab4:
-            risk_analysis.render(historical_filtered, filtered_symbols)
-
-        with tab5:
-            transactions.render(trading_log_filtered)
-
-        with tab6:
-            cost_basis.render(historical_filtered)
+        render_tabs_safely(tab_configs, StockTrackerConfig.TAB_NAMES)
 
     except Exception as e:
         st.error(f"An error occurred while loading the Stock Tracker: {str(e)}")

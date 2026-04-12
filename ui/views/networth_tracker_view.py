@@ -12,7 +12,7 @@ from pygwalker.api.streamlit import StreamlitRenderer
 from config import NetWorthConfig
 from constants import ColumnNames
 from data.validators import validate_dataframe
-from ui.components.utils import safe_render_tab, render_empty_state
+from ui.components.utils import render_empty_state, render_tabs_safely
 from ui.views.networth_tracker.growth_over_time import show_growth_over_time
 from ui.views.networth_tracker.pivot_table import show_pivot_table
 from ui.views.networth_tracker.dashboard import render_dashboard
@@ -86,48 +86,35 @@ def show_networth_tracker(
     # Check explorer data (non-blocking)
     explorer_available = validate_dataframe(data, min_rows=1, context="")
     
-    # Create navigation tabs
-    tabs = st.tabs(NetWorthConfig.TAB_NAMES)
-    
-    # Render Net Worth Over Time tab
-    with tabs[0]:
-        safe_render_tab(
-            show_growth_over_time,
-            df_filtered,
-            error_context="growth chart"
-        )
-    
-    # Render Summarized Table tab
-    with tabs[1]:
-        safe_render_tab(
-            show_pivot_table,
-            df_filtered,
-            error_context="pivot table"
-        )
-    
-    # Render Dashboard tab
-    with tabs[2]:
-        safe_render_tab(
-            render_dashboard,
-            df_filtered,
-            error_context="dashboard"
-        )
-    
-    # Render Growth Projections tab
-    with tabs[3]:
-        safe_render_tab(
-            show_growth_projections,
-            df_filtered,
-            error_context="projections"
-        )
-    
-    # Render Data Explorer tab
-    with tabs[4]:
-        safe_render_tab(
-            _render_data_explorer,
-            data if explorer_available else None,
-            error_context="data explorer"
-        )
+    tab_configs = [
+        {
+            'render_func': show_growth_over_time,
+            'args': [df_filtered],
+            'context': 'growth chart',
+        },
+        {
+            'render_func': show_pivot_table,
+            'args': [df_filtered],
+            'context': 'pivot table',
+        },
+        {
+            'render_func': render_dashboard,
+            'args': [df_filtered],
+            'context': 'dashboard',
+        },
+        {
+            'render_func': show_growth_projections,
+            'args': [df_filtered],
+            'context': 'projections',
+        },
+        {
+            'render_func': _render_data_explorer,
+            'args': [data if explorer_available else None],
+            'context': 'data explorer',
+        },
+    ]
+
+    render_tabs_safely(tab_configs, NetWorthConfig.TAB_NAMES)
 
 
 def _render_data_explorer(data: Optional[pd.DataFrame]) -> None:

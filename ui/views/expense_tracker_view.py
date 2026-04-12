@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from constants import ColumnNames
 from data.filters import filter_expenses
 from data.validators import validate_dataframe, validate_budget_config, validate_positive_integer
-from ui.components.utils import render_tabs_safely, render_empty_state, safe_render_tab
+from ui.components.utils import render_tabs_safely, render_empty_state
 from ui.views.expense_tracker.overview import render_overview_tab
 from ui.views.expense_tracker.transactions import render_transactions_tab
 from ui.views.expense_tracker.budget import render_budgets_tab
@@ -22,11 +22,11 @@ from ui.views.expense_tracker.sankey import render_sankey_tab
 
 # Tab configuration
 TAB_CONFIG = [
-    {'name': 'Overview', 'render_func': None, 'context': 'overview'},
+    {'name': 'Overview', 'render_func': render_overview_tab, 'context': 'overview'},
     {'name': 'Transactions', 'render_func': render_transactions_tab, 'context': 'transactions'},
-    {'name': 'Budgets', 'render_func': None, 'context': 'budgets'},
+    {'name': 'Budgets', 'render_func': render_budgets_tab, 'context': 'budgets'},
     {'name': 'Insights', 'render_func': render_insights_tab, 'context': 'insights'},
-    {'name': 'Sankey Chart', 'render_func': render_sankey_tab, 'context': 'sankey chart'}
+    {'name': 'Sankey Chart', 'render_func': render_sankey_tab, 'context': 'sankey flow diagram'}
 ]
 
 
@@ -83,56 +83,35 @@ def show_expense_tracker(
     
     st.divider()
     
-    # Create tab names from config
-    tab_names = [config['name'] for config in TAB_CONFIG]
-    tabs = st.tabs(tab_names)
-    
     # Filter for expenses (for tabs that only need expense data)
     df_expenses = filter_expenses(df_filtered)
-    
-    # Render each tab with error handling
-    # Overview tab
-    with tabs[0]:
-        safe_render_tab(
-            render_overview_tab,
-            df_filtered,
-            budgets,
-            num_months,
-            error_context="overview"
-        )
-    
-    # Transactions tab
-    with tabs[1]:
-        safe_render_tab(
-            render_transactions_tab,
-            df_filtered,
-            error_context="transactions"
-        )
-    
-    # Budgets tab
-    with tabs[2]:
-        safe_render_tab(
-            render_budgets_tab,
-            df_expenses,
-            budgets,
-            num_months,
-            error_context="budgets"
-        )
-    
-    # Insights tab
-    with tabs[3]:
-        safe_render_tab(
-            render_insights_tab,
-            df_filtered,
-            error_context="insights"
-        )
-    
-    # Sankey (Cash Flow) tab
-    with tabs[4]:
-        safe_render_tab(
-            render_sankey_tab,
-            df_filtered,
-            budgets,
-            num_months,
-            error_context="sankey flow diagram"
-        )
+
+    tab_configs = [
+        {
+            'render_func': render_overview_tab,
+            'args': [df_filtered, budgets, num_months],
+            'context': 'overview',
+        },
+        {
+            'render_func': render_transactions_tab,
+            'args': [df_filtered],
+            'context': 'transactions',
+        },
+        {
+            'render_func': render_budgets_tab,
+            'args': [df_expenses, budgets, num_months],
+            'context': 'budgets',
+        },
+        {
+            'render_func': render_insights_tab,
+            'args': [df_filtered],
+            'context': 'insights',
+        },
+        {
+            'render_func': render_sankey_tab,
+            'args': [df_filtered, budgets, num_months],
+            'context': 'sankey flow diagram',
+        },
+    ]
+
+    render_tabs_safely(tab_configs, [config['name'] for config in TAB_CONFIG])
