@@ -1,10 +1,21 @@
 # Python compiled files
 *.pyc
 __pycache__/
+*.pyo
+*.pyd
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
 *.ipynb
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
 
 *.csv
 *.xlsx

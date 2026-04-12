@@ -88,6 +88,11 @@ def show_networth_tracker(
     
     tab_configs = [
         {
+            'render_func': render_dashboard,
+            'args': [df_filtered],
+            'context': 'overview dashboard',
+        },
+        {
             'render_func': show_growth_over_time,
             'args': [df_filtered],
             'context': 'growth chart',
@@ -96,11 +101,6 @@ def show_networth_tracker(
             'render_func': show_pivot_table,
             'args': [df_filtered],
             'context': 'pivot table',
-        },
-        {
-            'render_func': render_dashboard,
-            'args': [df_filtered],
-            'context': 'dashboard',
         },
         {
             'render_func': show_growth_projections,

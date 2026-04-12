@@ -206,9 +206,9 @@ class NetWorthConfig:
     """Net worth feature labels and shared options."""
 
     TAB_NAMES = [
+        "Overview",
         "Net Worth Over Time",
         "Summarized Table",
-        "Dashboard",
         "Growth Projections",
         "Data Explorer"
     ]
