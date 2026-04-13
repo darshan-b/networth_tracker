@@ -2,8 +2,9 @@
 
 import json
 from typing import Any
+from urllib.parse import quote
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 
 def _render_d3_html(element_id: str, payload: dict[str, Any], body_js: str, height: int) -> None:
@@ -45,7 +46,7 @@ def _render_d3_html(element_id: str, payload: dict[str, Any], body_js: str, heig
     {body_js}
     </script>
     """
-    components.html(html, height=height + 120, scrolling=False)
+    st.iframe(f"data:text/html;charset=utf-8,{quote(html)}", height=height + 120)
 
 
 def render_networth_overview_d3(payload: dict[str, Any], height: int = 660) -> None:
@@ -673,5 +674,3 @@ def render_networth_composition_d3(payload: dict[str, Any], height: int = 620) -
     render_height = max(height, 640)
     payload = {**payload, "frameHeight": render_height}
     _render_d3_html("networth-composition-d3", payload, body_js, render_height)
-
-

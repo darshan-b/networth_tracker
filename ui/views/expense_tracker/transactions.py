@@ -5,9 +5,10 @@ Provides transaction filtering, search, and detailed view of all transactions.
 
 import streamlit as st
 import pandas as pd
-from app_constants import ColumnNames
-import streamlit.components.v1 as components
 import json
+from urllib.parse import quote
+
+from app_constants import ColumnNames
 from data.calculations import (
     classify_transaction_type,
     is_expense_transaction,
@@ -429,5 +430,4 @@ def _render_pivot_table(df_display):
     """
 
     # Display
-    components.html(html_code, height=500, scrolling=True)
-
+    st.iframe(f"data:text/html;charset=utf-8,{quote(html_code)}", height=500)

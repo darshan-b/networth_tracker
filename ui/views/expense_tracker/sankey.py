@@ -6,7 +6,7 @@ Visualizes cash flow from total expenses through categories to subcategories.
 import streamlit as st
 import pandas as pd
 import json
-import streamlit.components.v1 as components
+from urllib.parse import quote
 from app_constants import ColumnNames
 from data.calculations import calculate_expense_summary
 from ui.views.expense_tracker.overview import _render_summary_metrics
@@ -801,12 +801,4 @@ def _render_sankey_diagram(data: dict) -> None:
         </html>
         """
     
-    # Assuming you're using Streamlit
-    try:
-        import streamlit.components.v1 as components
-        components.html(html_content, height=1400, scrolling=True)
-    except ImportError:
-        # If not using Streamlit, save to file or display differently
-        with open('sankey_diagram.html', 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        print("Sankey diagram saved to sankey_diagram.html")
+    st.iframe(f"data:text/html;charset=utf-8,{quote(html_content)}", height=1400)
