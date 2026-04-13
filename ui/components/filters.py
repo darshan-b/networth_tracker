@@ -471,14 +471,14 @@ def render_stock_sidebar_filters(
         return (None, None)
 
 
-def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int]:
+def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int, pd.Timestamp, pd.Timestamp]:
     """Render sidebar date range filter for expense tracker.
     
     Args:
         df: Full expense transactions DataFrame
         
     Returns:
-        Tuple of (filtered_df, num_months, date_range_days)
+        Tuple of (filtered_df, num_months, date_range_days, start_date, end_date)
         
     Raises:
         ValueError: If DataFrame is invalid
@@ -490,11 +490,11 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
         # Validate input
         if df is None or df.empty:
             st.sidebar.error("No expense data available.")
-            return pd.DataFrame(), 1, 1
+            return pd.DataFrame(), 1, 1, pd.Timestamp.now(), pd.Timestamp.now()
         
         if ColumnNames.DATE not in df.columns:
             st.sidebar.error("Date information missing from expense data.")
-            return pd.DataFrame(), 1, 1
+            return pd.DataFrame(), 1, 1, pd.Timestamp.now(), pd.Timestamp.now()
         
         # Date range selector
         date_option = st.selectbox(
@@ -545,28 +545,31 @@ def render_expense_date_filter(df: pd.DataFrame) -> Tuple[pd.DataFrame, int, int
                 df_filtered = filter_by_date_range(df, start_date, end_date)
             else:
                 df_filtered = df.copy()
+
+        start_date = pd.to_datetime(start_date)
+        end_date = pd.to_datetime(end_date)
         
         # Calculate metrics for filtered range
         if len(df_filtered) > 0:
             df_temp = df_filtered.copy()
             df_temp['year_month'] = df_temp[ColumnNames.DATE].dt.to_period('M')
             num_months = df_temp['year_month'].nunique()
-            date_range_days = (df_filtered[ColumnNames.DATE].max() - df_filtered[ColumnNames.DATE].min()).days + 1
+            date_range_days = (end_date.normalize() - start_date.normalize()).days + 1
             
             # Display date range info
             st.info(
-                f"Showing data from **{df_filtered[ColumnNames.DATE].min().strftime('%Y-%m-%d')}** "
-                f"to **{df_filtered[ColumnNames.DATE].max().strftime('%Y-%m-%d')}**\n\n"
+                f"Showing data for **{start_date.strftime('%Y-%m-%d')}** "
+                f"to **{end_date.strftime('%Y-%m-%d')}**\n\n"
                 f"({date_range_days} days, {num_months} months)"
             )
         else:
             num_months = 1
-            date_range_days = 1
+            date_range_days = (end_date.normalize() - start_date.normalize()).days + 1
             st.sidebar.warning("No data found in the selected date range.")
         
-        return df_filtered, num_months, date_range_days
+        return df_filtered, num_months, date_range_days, start_date, end_date
         
     except Exception as e:
         st.sidebar.error(f"Error applying date filter: {str(e)}")
-        return pd.DataFrame(), 1, 1
+        return pd.DataFrame(), 1, 1, pd.Timestamp.now(), pd.Timestamp.now()
 

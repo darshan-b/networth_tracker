@@ -8,13 +8,21 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from config import ChartConfig
+from ui.charts import create_bar_chart, create_line_chart
 from data.calculations import (
     calculate_top_merchants,
     calculate_spending_by_dow,
     calculate_category_trends,
-    _convert_to_absolute
+    is_expense_transaction,
 )
 from app_constants import ColumnNames
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_accent_pills,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 import plotly.io as pio
 pio.templates.default = ChartConfig.TEMPLATE
 
@@ -30,7 +38,13 @@ def render_insights_tab(df):
     Returns:
         None
     """
-    st.subheader("Financial Insights")
+    inject_surface_styles()
+    render_page_hero(
+        "Expenses",
+        "Insights",
+        "Look for concentration, timing, and category patterns in spending behavior.",
+        "Use this tab for patterns and breakdowns rather than raw transactions.",
+    )
     
     if df.empty:
         st.info("No expense data available for the selected period.")
@@ -38,29 +52,26 @@ def render_insights_tab(df):
     
     df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
     
-    # render cash flow chart
+    render_section_intro("Cash Flow", "Review the monthly relationship between income, expenses, and savings.")
     _render_cash_flow(df)
     
-    col1, col2 = st.columns([0.6, 0.4], border=True)
+    render_section_intro("Snapshot", "Review the biggest spending patterns before drilling into category breakdowns.")
+    _render_summary_statistics(df)
+
+    render_section_intro("Breakdown", "See where spending is concentrated across merchants, categories, and subcategories.")
+    col1, col2 = st.columns([0.62, 0.38])
     with col1:
-        # Top merchants analysis
-        _render_top_merchants(df[df[ColumnNames.CATEGORY]!='Income'])
+        _render_top_merchants(df)
 
     with col2:
-        # Summary statistics
-        _render_summary_statistics(df[df[ColumnNames.CATEGORY]!='Income'])
-
-    # st.divider()
-    # # Spending patterns
-    # col1, col2 = st.columns(2)
-    # with col1:
-    #     _render_dow_spending(df[df[ColumnNames.CATEGORY]!='Income'])
-    # with col2:
-    #     _render_avg_transaction_by_category(df[df[ColumnNames.CATEGORY]!='Income'])
+        _render_dow_spending(df)
     
     st.divider()
-    # category trends over time
-    _render_category_trends(df[df[ColumnNames.CATEGORY]!='Income'])
+    render_section_intro(
+        "Trends",
+        "Track how category spending shifts over time.",
+    )
+    _render_category_trends(df)
 
 
 def _render_top_merchants(df):
@@ -70,84 +81,71 @@ def _render_top_merchants(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("<h3 style='text-align: center;'>Expenses Breakdown</h3>", unsafe_allow_html=True)
+    st.markdown("#### Spending Breakdown")
     
     try:
-        # Prepare data for all charts first
-        top_merchants = calculate_top_merchants(df, limit=10)
-        top_categories = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().apply(_convert_to_absolute).sort_values(ascending=False).head(10).reset_index()
-        top_subcategories = df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT].sum().apply(_convert_to_absolute).sort_values(ascending=False).head(10).reset_index()
+        expense_df = df[is_expense_transaction(df)].copy()
+        if expense_df.empty:
+            st.info("No expense rows available for breakdown analysis.")
+            return
 
-        # Pill buttons for selection
-        col1, col2 = st.columns([0.33, 0.67])
-        with col2:
-            selected = st.pills(
-                "View",
-                ["By Merchant", "By Category", "By Subcategory"],
-                label_visibility="collapsed"
+        top_merchants = calculate_top_merchants(df, limit=10)
+        top_categories = (
+            expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+            .sum()
+            .abs()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index()
+        )
+        top_subcategories = (
+            expense_df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
+            .sum()
+            .abs()
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index()
+        )
+        total_spend = abs(expense_df[ColumnNames.AMOUNT].sum())
+        top_category = top_categories.iloc[0] if not top_categories.empty else None
+        render_accent_pills(
+            [
+                ("Spend Rows", f"{len(expense_df):,}"),
+                ("Merchants", str(expense_df[ColumnNames.MERCHANT].nunique())),
+                ("Largest Category", f"{top_category[ColumnNames.CATEGORY] if top_category is not None else 'N/A'}"),
+                ("Largest Share", f"{(top_category[ColumnNames.AMOUNT] / total_spend * 100):.1f}%" if top_category is not None and total_spend else "0%"),
+            ]
+        )
+
+        selected = st.segmented_control(
+            "View",
+            ["By Merchant", "By Category", "By Subcategory"],
+            default="By Merchant",
+            label_visibility="collapsed",
+            width="stretch",
+        )
+
+        if selected == "By Merchant":
+            fig = create_bar_chart(
+                pd.Series(top_merchants[ColumnNames.AMOUNT].values, index=top_merchants[ColumnNames.MERCHANT].values),
+                orientation='h',
+                color_scheme='networth',
+            )
+        elif selected == "By Category":
+            fig = create_bar_chart(
+                pd.Series(top_categories[ColumnNames.AMOUNT].values, index=top_categories[ColumnNames.CATEGORY].values),
+                orientation='h',
+                color_scheme='networth',
+            )
+        else:
+            fig = create_bar_chart(
+                pd.Series(top_subcategories[ColumnNames.AMOUNT].values, index=top_subcategories[ColumnNames.SUBCATEGORY].values),
+                orientation='h',
+                color_scheme='networth',
             )
 
-        # Display based on selection
-        with st.container(border=True):
-            if selected == "By Merchant":
-                st.subheader("By Merchant")
-                
-                fig = px.bar(
-                    top_merchants,
-                    x=ColumnNames.AMOUNT,
-                    y=ColumnNames.MERCHANT,
-                    orientation='h',
-                    color=ColumnNames.MERCHANT,
-                    text=ColumnNames.AMOUNT
-                )
-                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
-                fig.update_layout(
-                    showlegend=False,
-                    xaxis_title="Amount ($)",
-                    yaxis_title="",
-                    yaxis={'categoryorder': 'total ascending'}
-                )
-                st.plotly_chart(fig, config={"responsive": True})
-                
-            elif selected == "By Category":
-                st.subheader("By Category")
-                
-                fig = px.bar(
-                    top_categories,
-                    x=ColumnNames.AMOUNT,
-                    y=ColumnNames.CATEGORY,
-                    orientation='h',
-                    color=ColumnNames.CATEGORY,
-                    text=ColumnNames.AMOUNT
-                )
-                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
-                fig.update_layout(
-                    showlegend=False,
-                    xaxis_title="Amount ($)",
-                    yaxis_title="",
-                    yaxis={'categoryorder': 'total ascending'}
-                )
-                st.plotly_chart(fig, config={"responsive": True})
-                
-            else:  # By Subcategory
-                st.subheader("By Subcategory")
-                
-                fig = px.bar(
-                    top_subcategories,
-                    x=ColumnNames.AMOUNT,
-                    y=ColumnNames.SUBCATEGORY,
-                    orientation='h',
-                    color=ColumnNames.SUBCATEGORY,
-                    text=ColumnNames.AMOUNT
-                )
-                fig.update_traces(texttemplate='$%{text:,.0f}', textposition='auto')
-                fig.update_layout(
-                    showlegend=False,
-                    xaxis_title="Amount ($)",
-                    yaxis_title="",
-                     yaxis={'categoryorder': 'total ascending'}
-                )
-                st.plotly_chart(fig, config={"responsive": True})
+        fig.update_yaxes(categoryorder='total ascending')
+        st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
         st.error(f"Error rendering top merchants: {str(e)}")
@@ -169,17 +167,12 @@ def _render_dow_spending(df):
             st.info("No day-of-week data available.")
             return
         
-        fig = px.bar(
-            dow_spending, 
-            x='day_of_week', 
-            y=ColumnNames.AMOUNT,
-            color=ColumnNames.AMOUNT,
-            color_continuous_scale='Greens'
-        )
-        fig.update_layout(
-            showlegend=False, 
-            xaxis_title="", 
-            yaxis_title="amount ($)"
+        fig = create_bar_chart(
+            pd.Series(dow_spending[ColumnNames.AMOUNT].values, index=dow_spending['day_of_week'].values),
+            orientation='v',
+            color_scheme='networth',
+            show_values=False,
+            y_label='Amount ($)',
         )
         st.plotly_chart(fig, config={"responsive": True})
         
@@ -233,96 +226,93 @@ def _render_summary_statistics(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.header("Summary", divider=True)
-
     # Calculate some reusable values
-    total_amount = abs(df[ColumnNames.AMOUNT].sum())
-    days_in_period = (df[ColumnNames.DATE].max() - df[ColumnNames.DATE].min()).days + 1
+    expense_df = df[is_expense_transaction(df)].copy()
+    if expense_df.empty:
+        st.info("No expense rows available for summary analysis.")
+        return
+    total_amount = abs(expense_df[ColumnNames.AMOUNT].sum())
 
     # Row 1: Core spending metrics
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        with st.container(border=True):
-            st.metric("Total Spend", f"${total_amount:,.2f}")
+        render_metric_card("Total Spend", f"${total_amount:,.0f}", "Selected period", "All non-income spend in view.", "negative")
 
     with col2:
-        with st.container(border=True):
-            avg_amount = abs(df[ColumnNames.AMOUNT].mean())
-            st.metric("Average Transaction", f"${avg_amount:.2f}")
+        avg_amount = abs(expense_df[ColumnNames.AMOUNT].mean()) if not expense_df.empty else 0
+        render_metric_card("Average Transaction", f"${avg_amount:,.0f}", "Per transaction", "Average amount per expense transaction.", "neutral")
 
     with col3:
-        with st.container(border=True):
-            median_amount = abs(df[ColumnNames.AMOUNT].median())
-            st.metric("Median Transaction", f"${median_amount:.2f}")
+        median_amount = abs(expense_df[ColumnNames.AMOUNT].median()) if not expense_df.empty else 0
+        render_metric_card("Median Transaction", f"${median_amount:,.0f}", "Typical size", "Median amount per expense transaction.", "neutral")
 
     # Row 2: Transaction counts and daily average
     col4, col5 = st.columns(2)
     with col4:
-        with st.container(border=True):
-            largest_amount = abs(df[ColumnNames.AMOUNT].min())
-            st.metric("Largest Transaction", f"${largest_amount:.2f}")
-            if not df.empty:
-                try:
-                    largest = df.loc[df[ColumnNames.AMOUNT].idxmin()]
-                    st.caption(f"{largest[ColumnNames.MERCHANT]} - {largest[ColumnNames.CATEGORY]}")
-                except Exception:
-                    pass
+        largest_amount = abs(expense_df[ColumnNames.AMOUNT].min()) if not expense_df.empty else 0
+        largest_caption = "Largest single expense in view."
+        if not expense_df.empty:
+            try:
+                largest = expense_df.loc[expense_df[ColumnNames.AMOUNT].idxmin()]
+                largest_caption = f"{largest[ColumnNames.MERCHANT]} - {largest[ColumnNames.CATEGORY]}"
+            except Exception:
+                pass
+        render_metric_card("Largest Transaction", f"${largest_amount:,.0f}", "High watermark", largest_caption, "negative")
 
     with col5:
-        with st.container(border=True):
-            daily_totals = df.groupby(df[ColumnNames.DATE].dt.date)[ColumnNames.AMOUNT].sum().abs()
+        daily_totals = expense_df.groupby(expense_df[ColumnNames.DATE].dt.date)[ColumnNames.AMOUNT].sum().abs() if not expense_df.empty else pd.Series(dtype=float)
+        if daily_totals.empty:
+            render_metric_card("Most Expensive Day", "N/A", "$0", "No daily spend totals available.", "neutral")
+        else:
             most_expensive_day = daily_totals.idxmax()
             most_expensive_amount = daily_totals.max()
-            st.metric("Most Expensive Day", most_expensive_day.strftime("%b %d, %Y"))
-            st.caption(f"${most_expensive_amount:,.2f}")
+            render_metric_card("Most Expensive Day", most_expensive_day.strftime("%b %d, %Y"), f"${most_expensive_amount:,.0f}", "Highest daily spend total in the period.", "neutral")
 
     # Row 4: Category insights
     col6, col7 = st.columns(2)
     with col6:
-        with st.container(border=True):
-            if not df.empty:
-                try:
-                    most_frequent_merchant = df[ColumnNames.MERCHANT].mode()[0]
-                    st.metric("Most Frequent Merchant", most_frequent_merchant)
-                except Exception:
-                    st.info("Insufficient data")
+        if not expense_df.empty:
+            try:
+                most_frequent_merchant = expense_df[ColumnNames.MERCHANT].mode()[0]
+                render_metric_card("Most Frequent Merchant", most_frequent_merchant, "Repeated most often", "Merchant with the highest transaction frequency.", "neutral")
+            except Exception:
+                st.info("Insufficient data")
 
     with col7:
-        with st.container(border=True):
-            if not df.empty:
-                try:
-                    most_frequent_category = df[ColumnNames.CATEGORY].mode()[0]
-                    st.metric("Most Frequent Category", most_frequent_category)
-                except Exception:
-                    st.info("Insufficient data")
+        if not expense_df.empty:
+            try:
+                most_frequent_category = expense_df[ColumnNames.CATEGORY].mode()[0]
+                render_metric_card("Most Frequent Category", most_frequent_category, "Repeated most often", "Category with the highest transaction frequency.", "neutral")
+            except Exception:
+                st.info("Insufficient data")
 
     col8, col9 = st.columns(2)
     with col8:
         # Row 8: Month-over-month change (if applicable)
-        if df[ColumnNames.DATE].dt.month.nunique() > 1:
-            with st.container(border=True):
-                current_month_num = df[ColumnNames.DATE].dt.month.max()
-                current_month = df[df[ColumnNames.DATE].dt.month == current_month_num]
-                prev_month = df[df[ColumnNames.DATE].dt.month == current_month_num - 1]
-                
-                if not prev_month.empty:
-                    current_total = abs(current_month[ColumnNames.AMOUNT].sum())
-                    prev_total = abs(prev_month[ColumnNames.AMOUNT].sum())
-                    change = current_total - prev_total
-                    change_pct = (change / prev_total * 100) if prev_total > 0 else 0
-                    
-                    st.metric("Current Month Spending", f"${current_total:,.2f}",
-                            delta=f"{change_pct:+.1f}% vs previous month", 
-                            delta_color="inverse")
+        if expense_df[ColumnNames.DATE].dt.month.nunique() > 1:
+            current_month_num = expense_df[ColumnNames.DATE].dt.month.max()
+            current_month = expense_df[expense_df[ColumnNames.DATE].dt.month == current_month_num]
+            prev_month = expense_df[expense_df[ColumnNames.DATE].dt.month == current_month_num - 1]
+
+            if not prev_month.empty:
+                current_total = abs(current_month[ColumnNames.AMOUNT].sum())
+                prev_total = abs(prev_month[ColumnNames.AMOUNT].sum())
+                change_pct = ((current_total - prev_total) / prev_total * 100) if prev_total > 0 else 0
+
+                render_metric_card(
+                    "Current Month Spending",
+                    f"${current_total:,.0f}",
+                    f"{change_pct:+.1f}% vs previous month",
+                    "Latest month compared with the prior month.",
+                    "negative" if change_pct > 0 else "positive" if change_pct < 0 else "neutral",
+                )
 
     with col9:
-        with st.container(border=True):
-            top_category = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().idxmax()
-            top_category_amount = df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().max()
-            percentage = (top_category_amount / total_amount) * 100
-            st.metric("Top Spending Category", top_category)
-            st.caption(f"{percentage:.1f}% of total (${top_category_amount:,.2f})")
+        top_category = expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().idxmax()
+        top_category_amount = expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().max()
+        percentage = (top_category_amount / total_amount) * 100 if total_amount else 0
+        render_metric_card("Top Spending Category", top_category, f"{percentage:.1f}% of total", f"${top_category_amount:,.0f} of total spend.", "neutral")
 
 
 def _render_category_trends(df):
@@ -341,18 +331,15 @@ def _render_category_trends(df):
             st.info("Insufficient data for trend analysis.")
             return
         
-        fig = px.line(
-            category_monthly, 
-            x=ColumnNames.MONTH, 
-            y=ColumnNames.AMOUNT, 
+        fig = create_line_chart(
+            category_monthly,
+            x=ColumnNames.MONTH,
+            y=ColumnNames.AMOUNT,
             color=ColumnNames.CATEGORY,
-            markers=True
+            x_title="Month",
+            y_title="Amount ($)",
         )
-        fig.update_layout(
-            xaxis_title="month", 
-            yaxis_title="amount ($)",
-            xaxis=dict(tickformat="%b %Y")
-        )
+        fig.update_xaxes(tickformat="%b %Y")
         st.plotly_chart(fig, config={"responsive": True})
         
     except Exception as e:
@@ -360,22 +347,21 @@ def _render_category_trends(df):
 
 
 def _render_cash_flow(df):
-
-    
-    st.markdown("<h3 style='text-align: center;'>Cash Flow by Month</h3>", unsafe_allow_html=True)
+    st.markdown("#### Monthly Cash Flow")
 
     # Create figure
     fig = go.Figure()
 
-    df['month'] = df[ColumnNames.DATE].dt.to_period('M').astype(str)
+    working_df = df.copy()
+    working_df['month'] = working_df[ColumnNames.DATE].dt.to_period('M').astype(str)
 
-    income = df[df[ColumnNames.CATEGORY]=='Income']
+    income = working_df[working_df[ColumnNames.CATEGORY]=='Income']
     income = income.groupby(['month'])[ColumnNames.AMOUNT].sum()
 
-    expense = df[df[ColumnNames.CATEGORY]!='Income']
+    expense = working_df[is_expense_transaction(working_df)]
     expense = expense.groupby(['month'])[ColumnNames.AMOUNT].sum()
 
-    savings = df.groupby(['month'])[ColumnNames.AMOUNT].sum()
+    savings = working_df.groupby(['month'])[ColumnNames.AMOUNT].sum()
 
     # Add positive bars (green)
     fig.add_trace(go.Bar(
@@ -417,30 +403,42 @@ def _render_cash_flow(df):
     fig.update_layout(
         barmode='relative',  # Stack bars
         height=400,
-        margin=dict(l=50, r=50, t=50, b=50),
-        # plot_bgcolor='white',
+        margin=dict(l=36, r=24, t=56, b=42),
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(248,250,252,0.55)",
         xaxis=dict(
-            showgrid=True,
-            gridcolor='lightgray',
-            showline=True,
-            linecolor='lightgray'
+            showgrid=False,
+            showline=False
         ),
         yaxis=dict(
             showgrid=True,
-            gridcolor='lightgray',
-            showline=True,
-            linecolor='lightgray',
+            gridcolor='rgba(148, 163, 184, 0.14)',
+            showline=False,
             tickformat='$,.0f',
             tickprefix='',
-            zeroline=True,
-            zerolinecolor='lightgray'
+            zeroline=False,
+            nticks=5,
         ),
         hovermode='x unified',
-        showlegend=False,
-        template = ChartConfig.TEMPLATE
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        template=ChartConfig.TEMPLATE,
+        hoverlabel=dict(
+            bgcolor="rgba(255,255,255,0.96)",
+            bordercolor="rgba(15, 23, 42, 0.10)",
+            font=dict(
+                family=ChartConfig.FONT["family"],
+                size=13,
+                color="#0f172a",
+            ),
+        ),
+        font=ChartConfig.FONT,
     )
-    container = st.container(border=True)  # Simple built-in border
-
-    with container:
-        st.plotly_chart(fig, config={"responsive": True})
+    fig.update_traces(
+        selector=dict(type="bar"),
+        marker_line_width=0,
+        marker_line_color="rgba(0,0,0,0)",
+        marker=dict(cornerradius=10),
+    )
+    st.plotly_chart(fig, config={"responsive": True})
 

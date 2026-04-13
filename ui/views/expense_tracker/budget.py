@@ -7,6 +7,13 @@ import streamlit as st
 import plotly.graph_objects as go
 from data.calculations import calculate_budget_comparison
 from app_constants import ColumnNames
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_accent_pills,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 
 
 def render_budgets_tab(df, budgets, num_months=1):
@@ -21,17 +28,41 @@ def render_budgets_tab(df, budgets, num_months=1):
     Returns:
         None
     """
-    st.subheader("Budget Management")
+    inject_surface_styles()
+    render_page_hero(
+        "Expenses",
+        "Budgets",
+        "Compare planned spend with actual spend and review category-level budget pressure.",
+        "Use this tab to see where spending is tracking well and where it is running hot.",
+    )
     
     if df.empty:
         st.info("No expense data available for the selected period.")
     
-    # Display budget period information
-    _render_period_info(num_months)
-    
-    # Calculate and display budget comparison
     try:
         budget_df = calculate_budget_comparison(df, budgets, num_months)
+
+        render_section_intro(
+            "Budget Health",
+            "Start with the period context and overall budget status, then narrow the categories in focus.",
+        )
+        _render_period_info(num_months)
+        render_section_intro(
+            "Snapshot",
+            "Quickly see how many categories are over budget, near the limit, or still on track.",
+        )
+        _render_budget_summary_cards(budget_df)
+
+        render_section_intro(
+            "Controls",
+            "Focus the chart and detail cards on the categories that matter most right now.",
+        )
+        budget_df = _apply_budget_filters(budget_df)
+
+        render_section_intro(
+            "Budget vs Actual",
+            "Compare planned spend with actual spend across the categories currently in focus.",
+        )
         _render_budget_comparison_chart(budget_df)
     except Exception as e:
         st.error(f"Error calculating budget comparison: {str(e)}")
@@ -39,14 +70,13 @@ def render_budgets_tab(df, budgets, num_months=1):
     
     st.divider()
     
-    # Display detailed budget tracking
+    render_section_intro(
+        "Category Detail",
+        "Review each category budget card for remaining room or overages.",
+    )
     _render_budget_details(budgets, budget_df, num_months)
     
-    # Display informational message
-    st.info(
-        "Read-only mode: To modify budgets, edit your budgets.xlsx/csv file "
-        "and reload the app."
-    )
+    st.caption("Budgets are read-only in the app. Update the source budget file to make changes.")
 
 
 def _render_period_info(num_months):
@@ -56,12 +86,11 @@ def _render_period_info(num_months):
     Args:
         num_months (int): Number of months in the selected period
     """
-    if num_months == 1:
-        period_info = "Budget for 1 month"
-    else:
-        period_info = f"Budget for {num_months} months"
-    
-    st.info(period_info)
+    render_accent_pills(
+        [
+            ("Budget Window", f"{num_months} month{'s' if num_months != 1 else ''}"),
+        ]
+    )
 
 
 def _render_budget_comparison_chart(budget_df):
@@ -71,7 +100,7 @@ def _render_budget_comparison_chart(budget_df):
     Args:
         budget_df (pd.DataFrame): Budget comparison dataframe
     """
-    st.markdown("#### Budget vs Actual (Selected Period)")
+    st.markdown("#### Budget vs Actual")
     
     if budget_df.empty:
         st.info("No budget data available.")
@@ -97,8 +126,10 @@ def _render_budget_comparison_chart(budget_df):
         fig.update_layout(
             barmode='group', 
             xaxis_title="", 
-            yaxis_title="amount ($)"
+            yaxis_title="amount ($)",
+            hovermode="x unified",
         )
+        fig.update_traces(marker_line_width=0, marker_line_color="rgba(0,0,0,0)", marker=dict(cornerradius=10))
         
         st.plotly_chart(fig, config={"responsive": True})
         
@@ -115,16 +146,23 @@ def _render_budget_details(budgets, budget_df, num_months):
         budget_df (pd.DataFrame): Budget comparison dataframe
         num_months (int): Number of months in the selected period
     """
-    st.markdown("#### monthly Budgets")
+    st.markdown("#### Category Budgets")
     
     col1, col2 = st.columns(2)
     
-    for idx, (category, monthly_budget) in enumerate(budgets.items()):
+    budget_lookup = {row[ColumnNames.CATEGORY]: row for _, row in budget_df.iterrows()}
+    ordered_categories = [
+        category for category in budget_df[ColumnNames.CATEGORY].tolist()
+        if category in budgets
+    ]
+
+    for idx, category in enumerate(ordered_categories):
+        monthly_budget = budgets[category]
         with col1 if idx % 2 == 0 else col2:
-            _render_budget_card(category, monthly_budget, budget_df, num_months)
+            _render_budget_card(category, monthly_budget, budget_lookup, num_months)
 
 
-def _render_budget_card(category, monthly_budget, budget_df, num_months):
+def _render_budget_card(category, monthly_budget, budget_lookup, num_months):
     """
     Render a single budget tracking card for a category.
     
@@ -135,17 +173,18 @@ def _render_budget_card(category, monthly_budget, budget_df, num_months):
         num_months (int): Number of months in the selected period
     """
     # Get budget data for this category
-    category_data = budget_df[budget_df[ColumnNames.CATEGORY] == category]
-    
-    if not category_data.empty:
-        row = category_data.iloc[0]
+    row = budget_lookup.get(category)
+
+    if row is not None:
         spent = row['Spent']
         scaled_budget = row['Budget']
         percentage = row['Percentage']
+        remaining = row['Remaining']
     else:
         spent = 0
         scaled_budget = monthly_budget * num_months
         percentage = 0
+        remaining = scaled_budget
     
     st.write(f"**{category}**")
     
@@ -156,13 +195,14 @@ def _render_budget_card(category, monthly_budget, budget_df, num_months):
             f"${scaled_budget:,.2f}",
             delta=f"${spent:,.2f} spent"
         )
-        st.caption(f"monthly budget: ${monthly_budget:,.2f}")
+        st.caption(f"Monthly budget: ${monthly_budget:,.2f} | Remaining: ${remaining:,.2f}")
     else:
         st.metric(
             "Budget", 
             f"${monthly_budget:,.2f}", 
             delta=f"${spent:,.2f} spent"
         )
+        st.caption(f"Remaining: ${remaining:,.2f}")
     
     # Render progress bar
     _render_budget_progress(spent, scaled_budget, percentage)
@@ -198,4 +238,65 @@ def _render_budget_progress(spent, budget, percentage):
         st.success(
             f"${remaining:,.2f} remaining ({100 - percentage:.1f}%)"
         )
+
+
+def _render_budget_summary_cards(budget_df):
+    """Render quick budget health metrics from the current comparison data."""
+    over_budget = int((budget_df["Percentage"] > 100).sum())
+    near_limit = int(((budget_df["Percentage"] > 80) & (budget_df["Percentage"] <= 100)).sum())
+    on_track = int((budget_df["Percentage"] <= 80).sum())
+    total_remaining = float(budget_df["Remaining"].sum())
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        render_metric_card("Over Budget", str(over_budget), "Categories", "Categories already above budget.", "negative" if over_budget else "neutral")
+    with col2:
+        render_metric_card("Near Limit", str(near_limit), "Categories", "Categories above 80% but not yet over.", "neutral")
+    with col3:
+        render_metric_card("On Track", str(on_track), "Categories", "Categories still comfortably within plan.", "positive")
+    with col4:
+        render_metric_card("Net Remaining", f"${total_remaining:,.0f}", "Across budgets", "Total budget left after current spending.", "positive" if total_remaining >= 0 else "negative")
+    render_accent_pills(
+        [
+            ("Tracked Categories", str(len(budget_df))),
+            ("Highest Pressure", f"{budget_df['Percentage'].max():.0f}%" if not budget_df.empty else "0%"),
+        ]
+    )
+
+
+def _apply_budget_filters(budget_df):
+    """Filter and sort the budget comparison for more useful review."""
+    col1, col2 = st.columns([1.2, 1.2])
+    with col1:
+        status_filter = st.multiselect(
+            "Status",
+            options=["Over Budget", "Near Limit", "On Track"],
+            default=["Over Budget", "Near Limit", "On Track"],
+            help="Filter categories by budget health status.",
+        )
+    with col2:
+        sort_by = st.selectbox(
+            "Sort By",
+            options=["Budget Pressure", "Largest Overspend", "Largest Remaining", "Alphabetical"],
+            index=0,
+        )
+
+    working_df = budget_df.copy()
+    working_df["Status"] = "On Track"
+    working_df.loc[(working_df["Percentage"] > 80) & (working_df["Percentage"] <= 100), "Status"] = "Near Limit"
+    working_df.loc[working_df["Percentage"] > 100, "Status"] = "Over Budget"
+
+    if status_filter:
+        working_df = working_df[working_df["Status"].isin(status_filter)]
+
+    if sort_by == "Budget Pressure":
+        working_df = working_df.sort_values("Percentage", ascending=False)
+    elif sort_by == "Largest Overspend":
+        working_df = working_df.sort_values("Remaining")
+    elif sort_by == "Largest Remaining":
+        working_df = working_df.sort_values("Remaining", ascending=False)
+    else:
+        working_df = working_df.sort_values(ColumnNames.CATEGORY)
+
+    return working_df.reset_index(drop=True)
 

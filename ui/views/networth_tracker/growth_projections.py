@@ -9,6 +9,14 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from app_constants import ColumnNames
+from config import ChartConfig
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_metric_card,
+    render_page_hero,
+    render_panel_head,
+    render_section_intro,
+)
 
 
 def calculate_months_to_goal(current_value, goal_amount, monthly_contribution, annual_return_rate, compound_freq='monthly'):
@@ -176,11 +184,15 @@ def create_breakdown_chart(projection_df, current_value):
     
     fig.update_layout(
         title="Balance Breakdown Over Time",
-        xaxis_title="months from Now",
-        yaxis_title="amount ($)",
-        template='plotly_white',
+        xaxis_title="Months From Now",
+        yaxis_title="Balance ($)",
+        template=ChartConfig.TEMPLATE,
         height=400,
         hovermode='x unified',
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(248,250,252,0.55)",
+        font=ChartConfig.FONT,
+        margin={"l": 24, "r": 16, "t": 56, "b": 24},
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -190,6 +202,7 @@ def create_breakdown_chart(projection_df, current_value):
         )
     )
     
+    fig.update_xaxes(showgrid=False, zeroline=False)
     fig.update_yaxes(tickprefix='$', tickformat=',.0f')
     
     return fig
@@ -202,7 +215,13 @@ def show_growth_projections(filtered_df):
     Args:
         filtered_df: Filtered dataset based on user selections
     """
-    st.header("Growth Projections & Goal Planning")
+    inject_surface_styles()
+    render_page_hero(
+        "Net Worth",
+        "Projections",
+        "Model how contributions and returns could shape the path to a target net worth.",
+        "Use this tab to pressure-test assumptions before setting a goal.",
+    )
     
     # Calculate current net worth
     totals_df = filtered_df.groupby([ColumnNames.MONTH, ColumnNames.MONTH_STR], as_index=False)[ColumnNames.AMOUNT].sum()
@@ -219,18 +238,41 @@ def show_growth_projections(filtered_df):
         total_change = current_nw - first_nw
         avg_monthly_growth = total_change / len(totals_df) if len(totals_df) > 0 else 0
         
+        render_section_intro(
+            "Baseline",
+            "Start from your latest net worth and historical pace.",
+        )
+
         # Display current status
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Current Net Worth", f"${current_nw:,.0f}")
+            render_metric_card(
+                "Current Net Worth",
+                f"${current_nw:,.0f}",
+                "Latest snapshot",
+                "Your current starting point for all projection scenarios.",
+                "neutral",
+            )
         
         with col2:
-            st.metric("Historical Avg Growth", f"${avg_monthly_growth:,.0f}/mo")
+            render_metric_card(
+                "Historical Avg Growth",
+                f"${avg_monthly_growth:,.0f}/mo",
+                "Recent history",
+                "Average monthly change based on the tracked net worth history.",
+                "positive" if avg_monthly_growth > 0 else "negative" if avg_monthly_growth < 0 else "neutral",
+            )
         
         with col3:
             months_tracked = len(totals_df)
-            st.metric("months Tracked", months_tracked)
+            render_metric_card(
+                "Months Tracked",
+                str(months_tracked),
+                "History depth",
+                "Number of historical snapshots informing this projection context.",
+                "neutral",
+            )
     else:
         avg_monthly_growth = 0
         st.warning("Need at least 2 months of data for projections.")
@@ -239,7 +281,10 @@ def show_growth_projections(filtered_df):
     st.divider()
     
     # Goal input section
-    st.subheader("Set Your Goal")
+    render_section_intro(
+        "Set Your Goal",
+        "Choose the target first, then tune the assumptions that could get you there.",
+    )
     
     col1, col2 = st.columns([2, 1])
     
@@ -265,13 +310,16 @@ def show_growth_projections(filtered_df):
     st.divider()
     
     # Investment parameters
-    st.subheader("Investment Parameters")
+    render_section_intro(
+        "Projection Inputs",
+        "Adjust the saving cadence and return profile to see how the path changes.",
+    )
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
         monthly_contribution = st.number_input(
-            "monthly Contribution ($)",
+            "Monthly Contribution ($)",
             min_value=0,
             value=2500,
             step=500,
@@ -314,7 +362,10 @@ def show_growth_projections(filtered_df):
         return
     
     # Key results
-    st.subheader("Projection Results")
+    render_section_intro(
+        "Projection Results",
+        "Review the projected timeline and what portion comes from contributions versus growth.",
+    )
     
     time_str = format_time_to_goal(months_to_goal)
     total_contributions = monthly_contribution * months_to_goal
@@ -323,17 +374,23 @@ def show_growth_projections(filtered_df):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Time to Goal", time_str)
+        render_metric_card("Time to Goal", time_str, "Projected timeline", "Estimated time required to reach the target.", "neutral")
     
     with col2:
-        st.metric("Total Contributions", f"${total_contributions:,.0f}")
+        render_metric_card("Total Contributions", f"${total_contributions:,.0f}", "Your capital", "Projected amount contributed along the way.", "neutral")
     
     with col3:
-        st.metric("Investment Growth", f"${total_growth:,.0f}")
+        render_metric_card(
+            "Investment Growth",
+            f"${total_growth:,.0f}",
+            "Market-driven portion",
+            "Projected growth contribution to the final target balance.",
+            "positive" if total_growth > 0 else "neutral",
+        )
     
     with col4:
         growth_pct = (total_growth / (current_nw + total_contributions) * 100) if (current_nw + total_contributions) > 0 else 0
-        st.metric("Growth Rate", f"{growth_pct:.1f}%")
+        render_metric_card("Growth Rate", f"{growth_pct:.1f}%", "Composition mix", "Growth as a share of total contributed capital plus starting balance.", "neutral")
     
     st.divider()
     
@@ -348,11 +405,17 @@ def show_growth_projections(filtered_df):
     )
     
     # Create visualizations
-    st.subheader("Visual Projections")
+    render_panel_head(
+        "neutral",
+        "Projection Chart",
+        "Projected Balance Breakdown",
+        "See how principal and investment growth stack over time.",
+        f"Goal amount: ${goal_amount:,.0f}",
+    )
     
     # Breakdown chart
     fig_breakdown = create_breakdown_chart(projection_df, current_nw)
-    st.plotly_chart(fig_breakdown, config={"responsive": True})
+    st.plotly_chart(fig_breakdown, config=ChartConfig.STREAMLIT_CONFIG)
     
     st.divider()
     
@@ -377,7 +440,10 @@ def show_growth_projections(filtered_df):
     # Comparison with historical growth
     if avg_monthly_growth > 0:
         st.divider()
-        st.subheader("Comparison with Historical Performance")
+        render_section_intro(
+            "Historical Comparison",
+            "Contrast the modeled path with the pace implied by your tracked history.",
+        )
         
         historical_months = (goal_amount - current_nw) / avg_monthly_growth
         
@@ -386,7 +452,7 @@ def show_growth_projections(filtered_df):
         with col1:
             st.markdown("**With Investment Strategy**")
             st.write(f"Time to Goal: {time_str}")
-            st.write(f"monthly Contribution: ${monthly_contribution:,.0f}")
+            st.write(f"Monthly Contribution: ${monthly_contribution:,.0f}")
             st.write(f"Expected Return: {annual_return}%")
         
         with col2:
@@ -398,7 +464,7 @@ def show_growth_projections(filtered_df):
     # Assumptions and disclaimers
     st.divider()
     st.caption(f"""
-    **Assumptions:** Starting balance: ${current_nw:,.0f} | monthly contribution: ${monthly_contribution:,.0f} | 
+    **Assumptions:** Starting balance: ${current_nw:,.0f} | Monthly contribution: ${monthly_contribution:,.0f} |
     Annual return: {annual_return}% ({compound_freq} compounding)
     """)
     

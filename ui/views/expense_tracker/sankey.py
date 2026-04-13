@@ -10,6 +10,11 @@ import streamlit.components.v1 as components
 from app_constants import ColumnNames
 from data.calculations import calculate_expense_summary
 from ui.views.expense_tracker.overview import _render_summary_metrics
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_page_hero,
+    render_section_intro,
+)
 
 # https://pixelied.com/colors/color-palette-generator
 # Color scheme for categories
@@ -42,7 +47,13 @@ def render_sankey_tab(df, budgets, num_months):
     Returns:
         None
     """
-    st.subheader("Sankey Chart")
+    inject_surface_styles()
+    render_page_hero(
+        "Expenses",
+        "Flow",
+        "Trace how income and expenses flow through categories and subcategories.",
+        "Use this view to understand movement, not just totals.",
+    )
     
     if df.empty:
         st.info("No transaction data available for the selected period.")
@@ -50,10 +61,18 @@ def render_sankey_tab(df, budgets, num_months):
     
     df = df[df[ColumnNames.SUBCATEGORY]!='Transfer']
     summary = calculate_expense_summary(df, budgets, num_months)
-    _render_summary_metrics(summary)
+    render_section_intro(
+        "Snapshot",
+        "Start with the top-line totals before reading the flow.",
+    )
+    _render_summary_metrics(summary, num_months)
 
     # Generate Sankey data
     try:
+        render_section_intro(
+            "Flow Diagram",
+            "Follow how money moves from income into the largest spending buckets.",
+        )
         sankey_data = _generate_sankey_data(df)
         _render_sankey_diagram(sankey_data)
     except Exception as e:

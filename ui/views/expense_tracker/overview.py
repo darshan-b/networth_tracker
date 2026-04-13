@@ -1,45 +1,25 @@
-"""Overview tab for expense tracker.
-
-Displays summary metrics, spending by category, and cumulative spending trends.
-"""
+"""Overview tab for expense tracker."""
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from data.calculations import calculate_expense_summary, calculate_category_spending
-from ui.charts import create_donut_chart, create_line_chart
-import streamlit.components.v1 as components
+from data.calculations import (
+    calculate_category_spending,
+    calculate_expense_summary,
+    is_income_transaction,
+    is_refund_transaction,
+)
+from ui.charts import create_donut_chart, create_line_chart, create_bar_chart
 from app_constants import ColumnNames
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_accent_pills,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 
 
-# https://discuss.streamlit.io/t/changing-the-text-color-of-only-one-metric/35338/2
-def color_widget_text(widget_text, color='#000000'):
-    """
-    Change the color of widget text in Streamlit using JavaScript injection.
-    
-    Args:
-        widget_text: The text content to match
-        color: Hex color code (default: black)
-    
-    Warning: This function injects user input into JavaScript. Ensure widget_text
-    is from a trusted source to prevent XSS vulnerabilities.
-    """
-    html = f"""
-    <script>
-        var elements = window.parent.document.querySelectorAll('*');
-        for (var i = 0; i < elements.length; i++) {{
-            if (elements[i].innerText === '{widget_text}') {{
-                elements[i].style.color = '{color}';
-            }}
-        }}
-    </script>
-    """
-    
-    # height = 0 or > 1 will keep adding horizontal lines
-    components.html(html, height=1, width=0)
-
-
-def render_overview_tab(df, budgets, num_months=1):
+def render_overview_tab(df, budgets, num_months=1, period_start=None, period_end=None):
     """
     Render the expense overview tab with summary metrics and visualizations.
     
@@ -47,11 +27,19 @@ def render_overview_tab(df, budgets, num_months=1):
         df (pd.DataFrame): Transactions dataframe filtered for expenses only
         budgets (dict): Dictionary of monthly budgets by category
         num_months (int): Number of distinct months in the selected date range
+        period_start: Selected period start date
+        period_end: Selected period end date
         
     Returns:
         None
     """
-    st.subheader("Expense Overview")
+    inject_surface_styles()
+    render_page_hero(
+        "Expenses",
+        "Overview",
+        "Review spending, income, savings, and category mix for the selected period.",
+        "Start here for the top-line picture before drilling into budgets, transactions, or insights.",
+    )
     
     if df.empty:
         st.info("No expense data available for the selected period.")
@@ -64,22 +52,22 @@ def render_overview_tab(df, budgets, num_months=1):
         st.error(f"Error calculating expense summary: {str(e)}")
         return
     
-    # Display key metrics
-    _render_summary_metrics(summary)
-    
+    render_section_intro("Snapshot", "A quick read on spending, income, savings, and remaining budget.")
+    _render_summary_metrics(summary, num_months)
+    _render_overview_pills(df, summary)
+
     st.divider()
-    
-    # Display charts
-    col1, col2 = st.columns(2)
-    
+    render_section_intro("Spending View", "Use the mix, leaders, and trend together to see where spending concentrated and how it built up.")
+
+    col1, col2 = st.columns([0.95, 1.05])
     with col1:
-        _render_category_pie_chart(df[df[ColumnNames.CATEGORY]!='Income'])
-    
+        _render_category_pie_chart(df)
+        _render_top_category_snapshot(df)
     with col2:
-        _render_spending_trend_chart(df[df[ColumnNames.CATEGORY]!='Income'])
+        _render_spending_trend_chart(df, period_start, period_end)
 
 
-def _render_summary_metrics(summary):
+def _render_summary_metrics(summary, num_months):
     """
     Display summary metrics in a four-column layout.
     
@@ -89,34 +77,67 @@ def _render_summary_metrics(summary):
     col1, col2, col3= st.columns(3)
     
     with col1:
-        st.metric("Total Spent", f"${summary['total_spent']:,.2f}", border=True, height='stretch')
-        # color_widget_text(f"${summary['total_spent']:,.2f}") 
-    
+        render_metric_card(
+            "Net Spending",
+            f"${summary['total_spent']:,.0f}",
+            "Selected period",
+            "Net spend after refunds and credits reduce expense totals.",
+            "negative",
+        )
     with col2:
-        st.metric("Total Income", f"${summary['total_income']:,.2f}", border=True, height='stretch')
-        # color_widget_text(f"${summary['total_income']:,.2f}")
-
+        render_metric_card(
+            "Total Income",
+            f"${summary['total_income']:,.0f}",
+            "Selected period",
+            "All income recorded in the active filter window.",
+            "positive",
+        )
     with col3:
-        st.metric("Total Savings", f"${summary['total_savings']:,.2f}", delta=f"{summary['savings_rate']}%", border=True, height='stretch')
-        # color_widget_text(f"${summary['total_savings']:,.2f}")
-
-
+        render_metric_card(
+            "Total Savings",
+            f"${summary['total_savings']:,.0f}",
+            f"{summary['savings_rate']}%",
+            "Net cash flow across the selected period.",
+            "positive" if summary["total_savings"] > 0 else "negative" if summary["total_savings"] < 0 else "neutral",
+        )
     col4, col5, _ = st.columns(3)
 
     with col4:
-        st.metric("Total Budget", f"${summary['total_budget']:,.2f}", border=True, height='stretch')
-        # color_widget_text(f"${summary['total_budget']:,.2f}") 
-    
+        render_metric_card(
+            "Total Budget",
+            f"${summary['total_budget']:,.0f}",
+            f"{num_months} month{'s' if num_months != 1 else ''}",
+            "Budget capacity for the selected period.",
+            "neutral",
+        )
     with col5:
         remaining = summary['remaining']
         budget = summary['total_budget']
-        color = "red" if remaining < 0 else "green"      
         remaining_pct = (remaining / budget * 100) if budget > 0 else 0
-        st.metric("Remaining", f"${remaining:,.2f}", delta=f"{remaining_pct:.1f}%", border=True)
-        # if remaining < 0:
-        #     color_widget_text(f"${remaining:,.2f}", '#FF0000') 
-        # else:
-        #     color_widget_text(f"${remaining:,.2f}", '#00B050') 
+        render_metric_card(
+            "Remaining",
+            f"${remaining:,.0f}",
+            f"{remaining_pct:.1f}%",
+            "Budget left after recorded spending.",
+            "positive" if remaining > 0 else "negative" if remaining < 0 else "neutral",
+        )
+        
+
+def _render_overview_pills(df: pd.DataFrame, summary: dict) -> None:
+    """Render compact supporting context below the primary metric cards."""
+    refund_count = int(is_refund_transaction(df).sum())
+    active_merchants = df[ColumnNames.MERCHANT].nunique()
+    categories = df[ColumnNames.CATEGORY].nunique()
+    render_accent_pills(
+        [
+            ("Refunds/Credits", f"${summary.get('total_refunds', 0):,.0f}"),
+            ("Gross Spend", f"${summary.get('gross_spent', summary['total_spent']):,.0f}"),
+            ("Transactions", f"{len(df):,}"),
+            ("Refund Rows", str(refund_count)),
+            ("Merchants", str(active_merchants)),
+            ("Categories", str(categories)),
+        ]
+    )
 
 
 def _render_category_pie_chart(df):
@@ -126,7 +147,7 @@ def _render_category_pie_chart(df):
     Args:
         df (pd.DataFrame): Transactions dataframe
     """
-    st.markdown("#### Spending by category")
+    st.markdown("#### Spending by Category")
     
     try:
         category_spending = calculate_category_spending(df)
@@ -142,7 +163,26 @@ def _render_category_pie_chart(df):
         st.error(f"Error rendering category chart: {str(e)}")
 
 
-def _render_spending_trend_chart(df):
+def _render_top_category_snapshot(df: pd.DataFrame) -> None:
+    """Render a compact ranked category view beside the donut."""
+    category_spending = calculate_category_spending(df).head(5)
+    if category_spending.empty:
+        return
+
+    st.markdown("#### Biggest Categories")
+    fig = create_bar_chart(
+        category_spending.sort_values(),
+        orientation="h",
+        color_scheme="networth",
+        show_values=True,
+        x_label="Net spend ($)",
+        height=300,
+    )
+    fig.update_layout(margin={"l": 24, "r": 16, "t": 24, "b": 24})
+    st.plotly_chart(fig, config={"responsive": True})
+
+
+def _render_spending_trend_chart(df, period_start=None, period_end=None):
     """
     Render a line chart showing cumulative spending over time with filters.
     
@@ -150,9 +190,10 @@ def _render_spending_trend_chart(df):
         df (pd.DataFrame): Transactions dataframe
     """
     st.markdown("#### Spending Trend")
-    
-    # Render filter controls
-    filtered_df = _render_trend_filters(df)
+    st.caption("Refine the trend by category, subcategory, or merchant.")
+
+    with st.expander("Trend Filters", expanded=False):
+        filtered_df = _render_trend_filters(df)
     
     if filtered_df.empty:
         st.info("No data available for selected filters.")
@@ -160,7 +201,7 @@ def _render_spending_trend_chart(df):
     
     # Aggregate and plot data
     try:
-        daily_spending = _aggregate_daily_spending(filtered_df)
+        daily_spending = _aggregate_daily_spending(filtered_df, period_start, period_end)
         fig = _create_trend_chart(daily_spending)
         st.plotly_chart(fig, config={"responsive": True})
     except Exception as e:
@@ -231,24 +272,50 @@ def _render_trend_filters(df):
     return filtered_df
 
 
-def _aggregate_daily_spending(df):
+def _aggregate_daily_spending(df, period_start=None, period_end=None):
     """
     Aggregate spending by day and calculate cumulative totals.
     
     Args:
         df (pd.DataFrame): Filtered transactions dataframe
+        period_start: Selected period start date
+        period_end: Selected period end date
         
     Returns:
         pd.DataFrame: Daily spending with cumulative amounts
     """
-    daily_spending = (
-        df.groupby(ColumnNames.DATE, as_index=False)[ColumnNames.AMOUNT]
-        .sum()
-        .sort_values(ColumnNames.DATE)
-    )
-    
-    # Convert to positive values and calculate cumulative spending
-    daily_spending[ColumnNames.AMOUNT] = daily_spending[ColumnNames.AMOUNT].abs()
+    non_income_df = df[~is_income_transaction(df)].copy()
+
+    if period_start is None:
+        period_start = df[ColumnNames.DATE].min()
+    if period_end is None:
+        period_end = df[ColumnNames.DATE].max()
+
+    period_start = pd.to_datetime(period_start).normalize()
+    period_end = pd.to_datetime(period_end).normalize()
+
+    all_dates = pd.date_range(period_start, period_end, freq="D")
+
+    if non_income_df.empty:
+        daily_spending = pd.DataFrame(
+            {
+                ColumnNames.DATE: all_dates,
+                ColumnNames.AMOUNT: 0.0,
+            }
+        )
+    else:
+        daily_spending = (
+            non_income_df.groupby(ColumnNames.DATE)[ColumnNames.AMOUNT]
+            .sum()
+            .reindex(all_dates, fill_value=0.0)
+            .rename_axis(ColumnNames.DATE)
+            .reset_index()
+            .sort_values(ColumnNames.DATE)
+        )
+
+        # Convert grouped signed totals into positive net-spend values
+        daily_spending[ColumnNames.AMOUNT] = daily_spending[ColumnNames.AMOUNT].mul(-1).clip(lower=0)
+
     daily_spending['cumulative_amount'] = daily_spending[ColumnNames.AMOUNT].cumsum()
     
     return daily_spending
@@ -264,10 +331,14 @@ def _create_trend_chart(daily_spending):
     Returns:
         plotly.graph_objects.Figure: Configured line chart
     """
-    return create_line_chart(daily_spending, 
-                            x=ColumnNames.DATE, 
-                            y='cumulative_amount', 
-                            x_title='Date', 
-                            y_title="Cumulative Spending ($)")
+    fig = create_line_chart(
+        daily_spending,
+        x=ColumnNames.DATE,
+        y='cumulative_amount',
+        x_title='Date',
+        y_title="Cumulative Spending ($)",
+    )
+    fig.update_layout(margin={"l": 28, "r": 18, "t": 32, "b": 30})
+    return fig
 
 

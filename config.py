@@ -75,8 +75,29 @@ class ColorSchemes:
         '#CFD8DC'   # Very Light Blue Gray
     ]
     
-    # Categorical colors (for categories)
-    CATEGORICAL = px.colors.qualitative.Dark2
+    # Categorical colors (shared across overview/comparison charts)
+    CATEGORICAL = [
+        '#0F766E',
+        '#3B82F6',
+        '#94A3B8',
+        '#F59E0B',
+        '#EF4444',
+        '#8B5CF6',
+        '#14B8A6',
+        '#64748B',
+    ]
+
+    # Net worth palette: softer, cohesive tones for subtype/type/institution breakdowns
+    NETWORTH = [
+        '#c7522a',
+        '#e5c185',
+        '#f0daa5',
+        '#fbf2c4',
+        '#b8cdab',
+        '#74a892',
+        '#008585',
+        '#004343',
+    ]
     
     # Status colors
     SUCCESS = '#4CAF50'
@@ -230,6 +251,28 @@ class NetWorthConfig:
     KPI_TOTAL_CHANGE = "Total Change"
     KPI_STARTING_NET_WORTH = "Starting Net Worth"
     KPI_KEY_METRICS_TITLE = "### Key Metrics"
+
+
+class NetWorthOverviewConfig:
+    """Shared visual config for the Net Worth overview tab."""
+
+    PANEL_STYLES = {
+        "assets": {
+            "accent": ColorSchemes.ASSETS[0],
+            "border": "rgba(15, 118, 110, 0.12)",
+            "background": "linear-gradient(180deg, #f5fbf7 0%, #edf8f2 100%)",
+        },
+        "liabilities": {
+            "accent": ColorSchemes.LIABILITIES[0],
+            "border": "rgba(185, 28, 28, 0.12)",
+            "background": "linear-gradient(180deg, #fff7f7 0%, #fff0f0 100%)",
+        },
+        "neutral": {
+            "accent": ColorSchemes.NEUTRAL[0],
+            "border": "rgba(96, 125, 139, 0.12)",
+            "background": "linear-gradient(180deg, #f8fafc 0%, #f2f6f9 100%)",
+        },
+    }
 
 
 # Legacy support - map old config to new structure

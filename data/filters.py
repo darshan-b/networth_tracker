@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple, Union
 import pandas as pd
 import streamlit as st
 
-from app_constants import ColumnNames
+from app_constants import ColumnNames, TransactionTypes
 # Constants for date range options
 DATE_RANGE_LAST_7 = "Last 7 days"
 DATE_RANGE_LAST_14 = "Last 14 days"
@@ -199,12 +199,20 @@ def filter_by_date_range(df: pd.DataFrame, start_date: Union[datetime, pd.Timest
             st.info(" No date range specified, returning all data")
             return df.copy()
         
+        start_date = pd.to_datetime(start_date)
+        end_date = pd.to_datetime(end_date)
+
         if start_date > end_date:
             st.warning(f" Start date is after end date, swapping dates")
             start_date, end_date = end_date, start_date
+
+        # Treat date filters as whole-day inclusive bounds so same-day transactions
+        # are not dropped when the source timestamps carry time components.
+        start_bound = start_date.normalize()
+        end_bound = end_date.normalize() + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
         
         # Filter by date range
-        filtered_df = df[(df[COL_DATE] >= start_date) & (df[COL_DATE] <= end_date)]
+        filtered_df = df[(df[COL_DATE] >= start_bound) & (df[COL_DATE] <= end_bound)]
         
         return filtered_df
         
@@ -214,13 +222,13 @@ def filter_by_date_range(df: pd.DataFrame, start_date: Union[datetime, pd.Timest
 
 
 def filter_expenses(df: pd.DataFrame) -> pd.DataFrame:
-    """Filter dataframe for expenses only, excluding Income.
+    """Filter dataframe for actual expense outflows only.
     
     Args:
         df: Transactions dataframe (must have ColumnNames.DATE column)
         
     Returns:
-        DataFrame with expenses only (category != 'Income')
+        DataFrame with negative non-income transactions only
         
     Raises:
         KeyError: If ColumnNames.DATE column is missing
@@ -230,8 +238,10 @@ def filter_expenses(df: pd.DataFrame) -> pd.DataFrame:
             st.error(f" '{COL_CATEGORY_EXPENSE}' column not found in data")
             raise KeyError(f"'{COL_CATEGORY_EXPENSE}' column not found in DataFrame")
         
-        # Filter out income
-        filtered_df = df[df[COL_CATEGORY_EXPENSE] != 'Income']
+        filtered_df = df[
+            (df[COL_CATEGORY_EXPENSE] != TransactionTypes.INCOME)
+            & (df[ColumnNames.AMOUNT] < 0)
+        ]
         
         return filtered_df
         

@@ -6,9 +6,20 @@ Provides transaction filtering, search, and detailed view of all transactions.
 import streamlit as st
 import pandas as pd
 from app_constants import ColumnNames
-from pivottablejs import pivot_ui
 import streamlit.components.v1 as components
 import json
+from data.calculations import (
+    classify_transaction_type,
+    is_expense_transaction,
+    is_income_transaction,
+    is_refund_transaction,
+)
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 
 
 def render_transactions_tab(df):
@@ -20,28 +31,58 @@ def render_transactions_tab(df):
     
     Returns: None
     """
-    st.subheader("Transactions")
+    inject_surface_styles()
+    render_page_hero(
+        "Expenses",
+        "Transactions",
+        "Search, filter, and review raw transaction activity across the selected period.",
+        "Use this tab when you need exact rows, not just summaries.",
+    )
     
     if df.empty:
         st.info("No transactions available for the selected period.")
         return
     
-    # Display summary metrics
-    _render_transaction_summary(df)
-
-    # Render filters with cascading logic
+    render_section_intro(
+        "Filters",
+        "Refine the transaction list by account, category, subcategory, and merchant.",
+    )
     df_filtered = _apply_transaction_filters(df)
     
     if df_filtered.empty:
         st.warning("No transactions match the selected filters.")
         return
 
+    render_section_intro(
+        "Snapshot",
+        "A quick read on the filtered expense, income, and net savings mix.",
+    )
+    _render_transaction_summary(df_filtered)
+
+    render_section_intro(
+        "Transaction List",
+        "Review the filtered rows directly or export them for follow-up work.",
+    )
+    action_col1, action_col2 = st.columns([1, 4])
+    with action_col1:
+        export_df = _build_export_dataframe(df_filtered)
+        st.download_button(
+            "Download CSV",
+            data=export_df.to_csv(index=False),
+            file_name="filtered_transactions.csv",
+            mime="text/csv",
+            width="content",
+        )
+
     # Display transaction table
     _render_transaction_table(df_filtered)
     # Display transaction count
     st.caption(f"Showing {len(df_filtered):,} of {len(df):,} transactions")
     
-    st.markdown("### Experimental Pivot Table")
+    render_section_intro(
+        "Pivot Explorer",
+        "Use the experimental pivot below for ad hoc slicing after you narrow the transaction set.",
+    )
     _render_pivot_table(df_filtered)
 
 
@@ -55,15 +96,22 @@ def _apply_transaction_filters(df):
     Returns:
         pd.DataFrame: Filtered transactions dataframe
     """
-    st.markdown("### Filters")
-
     if 'filter_reset_counter' not in st.session_state:
         st.session_state.filter_reset_counter = 0
     
-    # First row: Account and Search
-    col1, col2 = st.columns([2, 2])
-    
+    # First row: Type, Account, Search
+    col1, col2, col3 = st.columns([1.2, 2, 2])
+
     with col1:
+        type_filter = st.multiselect(
+            "Type",
+            options=["Expense", "Refund/Credit", "Income"],
+            default=["Expense", "Refund/Credit", "Income"],
+            help="Filter by transaction type",
+            key=f"type_filter_{st.session_state.filter_reset_counter}",
+        )
+
+    with col2:
         available_accounts = sorted(df[ColumnNames.ACCOUNT].unique())
         account_filter = st.multiselect(
             "Account", 
@@ -73,7 +121,7 @@ def _apply_transaction_filters(df):
             key=f"account_filter_{st.session_state.filter_reset_counter}"
         )
     
-    with col2:
+    with col3:
         search_merchant = st.text_input(
             "Search Merchant", 
             "",
@@ -82,13 +130,24 @@ def _apply_transaction_filters(df):
             key=f"search_merchant_{st.session_state.filter_reset_counter}"
         )
     
-    # Filter by account first for cascading
-    df_temp = df[df[ColumnNames.ACCOUNT].isin(account_filter)] if account_filter else df
-    
+    # Filter by type/account first for cascading
+    df_temp = df.copy()
+    if type_filter and len(type_filter) < 3:
+        mask = pd.Series(False, index=df_temp.index)
+        if "Expense" in type_filter:
+            mask = mask | is_expense_transaction(df_temp)
+        if "Refund/Credit" in type_filter:
+            mask = mask | is_refund_transaction(df_temp)
+        if "Income" in type_filter:
+            mask = mask | is_income_transaction(df_temp)
+        df_temp = df_temp[mask]
+
+    df_temp = df_temp[df_temp[ColumnNames.ACCOUNT].isin(account_filter)] if account_filter else df_temp
+
     # Second row: Category and Subcategory (cascading)
-    col3, col4 = st.columns([2, 2])
+    col4, col5 = st.columns([2, 2])
     
-    with col3:
+    with col4:
         # Only show categories that exist in the filtered accounts
         available_categories = sorted(df_temp[ColumnNames.CATEGORY].unique())
         category_filter = st.multiselect(
@@ -102,7 +161,7 @@ def _apply_transaction_filters(df):
     # Filter by category for subcategory options
     df_temp = df_temp[df_temp[ColumnNames.CATEGORY].isin(category_filter)] if category_filter else df_temp
     
-    with col4:
+    with col5:
         # Only show subcategories that exist in the filtered categories
         available_subcategories = sorted(df_temp[ColumnNames.SUBCATEGORY].unique())
         subcategory_filter = st.multiselect(
@@ -113,11 +172,38 @@ def _apply_transaction_filters(df):
             key=f"subcategory_filter_{st.session_state.filter_reset_counter}"
         )
     
+    # Third row: amount range
+    amount_series = df_temp[ColumnNames.AMOUNT].abs()
+    amount_min = float(amount_series.min()) if not amount_series.empty else 0.0
+    amount_max = float(amount_series.max()) if not amount_series.empty else 0.0
+
+    amount_range = st.slider(
+        "Amount Range",
+        min_value=float(amount_min),
+        max_value=float(amount_max if amount_max > amount_min else amount_min + 1),
+        value=(float(amount_min), float(amount_max if amount_max > amount_min else amount_min + 1)),
+        step=max((amount_max - amount_min) / 100, 1.0),
+        help="Filter by absolute transaction amount",
+        key=f"amount_range_{st.session_state.filter_reset_counter}",
+    )
+
     # Apply all filters
-    df_filtered = df[
-        (df[ColumnNames.ACCOUNT].isin(account_filter)) &
-        (df[ColumnNames.CATEGORY].isin(category_filter)) &
-        (df[ColumnNames.SUBCATEGORY].isin(subcategory_filter))
+    df_filtered = df.copy()
+
+    if type_filter and len(type_filter) < 3:
+        mask = pd.Series(False, index=df_filtered.index)
+        if "Expense" in type_filter:
+            mask = mask | is_expense_transaction(df_filtered)
+        if "Refund/Credit" in type_filter:
+            mask = mask | is_refund_transaction(df_filtered)
+        if "Income" in type_filter:
+            mask = mask | is_income_transaction(df_filtered)
+        df_filtered = df_filtered[mask]
+
+    df_filtered = df_filtered[
+        (df_filtered[ColumnNames.ACCOUNT].isin(account_filter)) &
+        (df_filtered[ColumnNames.CATEGORY].isin(category_filter)) &
+        (df_filtered[ColumnNames.SUBCATEGORY].isin(subcategory_filter))
     ]
     
     # Apply merchant search
@@ -129,6 +215,10 @@ def _apply_transaction_filters(df):
                 na=False
             )
         ]
+
+    df_filtered = df_filtered[
+        df_filtered[ColumnNames.AMOUNT].abs().between(amount_range[0], amount_range[1])
+    ]
     
     # Clear filters button
     if st.button("Reset All Filters", width="content"):
@@ -138,6 +228,17 @@ def _apply_transaction_filters(df):
     st.divider()
     
     return df_filtered
+
+
+def _build_export_dataframe(df_filtered: pd.DataFrame) -> pd.DataFrame:
+    """Prepare a clean export of the currently filtered transaction set."""
+    export_df = df_filtered.sort_values(ColumnNames.DATE, ascending=False).copy()
+    export_df["Type"] = export_df.apply(classify_transaction_type, axis=1)
+    export_df["Display Amount"] = export_df.apply(
+        lambda row: abs(row[ColumnNames.AMOUNT]) if classify_transaction_type(row) != "Income" else row[ColumnNames.AMOUNT],
+        axis=1,
+    )
+    return export_df
 
 
 def _render_transaction_table(df_filtered):
@@ -151,14 +252,12 @@ def _render_transaction_table(df_filtered):
     
     # Create display amount column
     df_display['display_amount'] = df_display.apply(
-        lambda row: abs(row[ColumnNames.AMOUNT]) if row[ColumnNames.CATEGORY] != 'Income' else row[ColumnNames.AMOUNT], 
+        lambda row: abs(row[ColumnNames.AMOUNT]) if classify_transaction_type(row) != 'Income' else row[ColumnNames.AMOUNT], 
         axis=1
     )
     
     # Add transaction type indicator
-    df_display['type'] = df_display[ColumnNames.CATEGORY].apply(
-        lambda x: 'Income' if x == 'Income' else 'Expense'
-    )
+    df_display['type'] = df_display.apply(classify_transaction_type, axis=1)
     
     st.dataframe(
         df_display[[ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, 'display_amount']],
@@ -208,46 +307,51 @@ def _render_transaction_summary(df_filtered):
     col1, col2, col3 = st.columns(3)
     
     # Calculate metrics
-    expenses_filtered = df_filtered[df_filtered[ColumnNames.CATEGORY] != 'Income']
-    expenses_total = abs(expenses_filtered[ColumnNames.AMOUNT].sum())
+    expenses_filtered = df_filtered[is_expense_transaction(df_filtered)]
+    refunds_filtered = df_filtered[is_refund_transaction(df_filtered)]
+    expenses_total = abs(expenses_filtered[ColumnNames.AMOUNT].sum()) - refunds_filtered[ColumnNames.AMOUNT].sum()
+    expenses_total = max(expenses_total, 0.0)
     expenses_count = len(expenses_filtered)
     
-    income_filtered = df_filtered[df_filtered[ColumnNames.CATEGORY] == 'Income']
+    income_filtered = df_filtered[is_income_transaction(df_filtered)]
     income_total = income_filtered[ColumnNames.AMOUNT].sum()
     income_count = len(income_filtered)
+    refund_total = refunds_filtered[ColumnNames.AMOUNT].sum()
+    refund_count = len(refunds_filtered)
     
-    net_total = income_total - expenses_total
+    net_total = df_filtered[ColumnNames.AMOUNT].sum()
     
     with col1:
-        st.metric(
-            "Total Expenses", 
-            f"${expenses_total:,.2f}",
-            delta=f"{expenses_count} transactions",
-            delta_color="off"
+        render_metric_card(
+            "Net Expenses",
+            f"${expenses_total:,.0f}",
+            f"{expenses_count} transactions",
+            "Expense outflows after refunds and credits reduce the total.",
+            "negative",
         )
     
     with col2:
-        st.metric(
-            "Total Income", 
-            f"${income_total:,.2f}",
-            delta=f"{income_count} transactions",
-            delta_color="off"
+        render_metric_card(
+            "Refunds / Credits",
+            f"${refund_total:,.0f}",
+            f"{refund_count} transactions",
+            "Positive non-income transactions that offset spending.",
+            "positive" if refund_total > 0 else "neutral",
         )
     
     with col3:
-        st.metric( 
-            "Savings (Income - Expenses)", 
-            f"${net_total:,.2f}",
-            delta="+Under" if net_total >= 0 else "-Over",
-            delta_color="normal"
+        render_metric_card(
+            "Net Cash Flow",
+            f"${net_total:,.0f}",
+            f"${income_total:,.0f} income",
+            "All signed transactions summed across the filtered set.",
+            "positive" if net_total > 0 else "negative" if net_total < 0 else "neutral",
         )
 
 
 def _render_pivot_table(df_display):
     # Add transaction type indicator
-    df_display['type'] = df_display[ColumnNames.CATEGORY].apply(
-        lambda x: 'Income' if x == 'Income' else 'Expense'
-    )
+    df_display['type'] = df_display.apply(classify_transaction_type, axis=1)
     
     df_for_pivot = df_display[[ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, ColumnNames.AMOUNT]].copy()
 

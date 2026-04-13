@@ -161,7 +161,7 @@ def render_expense_tracker() -> None:
             return
         
         # Render date filter in sidebar and get filtered data
-        df_filtered, num_months, date_range_days = render_expense_date_filter(df)
+        df_filtered, num_months, date_range_days, period_start, period_end = render_expense_date_filter(df)
         
         if df_filtered.empty:
             render_recovery_guide(
@@ -176,7 +176,7 @@ def render_expense_tracker() -> None:
             return
         
         # Show expense tracker with filtered data
-        show_expense_tracker(df_filtered, budgets, num_months)
+        show_expense_tracker(df_filtered, budgets, num_months, period_start, period_end)
         
     except Exception as e:
         st.error(f"An error occurred while loading the Expense Tracker: {str(e)}")

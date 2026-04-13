@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
-from app_constants import AccountTypes, ColumnNames
+from app_constants import AccountTypes, ColumnNames, TransactionTypes
 from config import AnalysisConfig
 
 
@@ -65,6 +65,49 @@ def _convert_to_absolute(amount: float) -> float:
         Absolute value of the amount
     """
     return abs(amount)
+
+
+def is_income_transaction(df: pd.DataFrame) -> pd.Series:
+    """Identify true income transactions."""
+    return df[ColumnNames.CATEGORY].fillna("").astype(str).eq(TransactionTypes.INCOME)
+
+
+def is_refund_transaction(df: pd.DataFrame) -> pd.Series:
+    """Identify non-income credits such as refunds."""
+    income_mask = is_income_transaction(df)
+    return ~income_mask & (df[ColumnNames.AMOUNT] > 0)
+
+
+def is_expense_transaction(df: pd.DataFrame) -> pd.Series:
+    """Identify actual expense outflows."""
+    income_mask = is_income_transaction(df)
+    return ~income_mask & (df[ColumnNames.AMOUNT] < 0)
+
+
+def classify_transaction_type(series: pd.Series) -> str:
+    """Classify a transaction row for display and filtering."""
+    if series.get(ColumnNames.CATEGORY) == TransactionTypes.INCOME:
+        return TransactionTypes.INCOME
+    if series.get(ColumnNames.AMOUNT, 0) > 0:
+        return "Refund/Credit"
+    return TransactionTypes.EXPENSE
+
+
+def _net_outflow(series: pd.Series) -> pd.Series:
+    """Convert signed grouped amounts into positive spend values after refunds."""
+    return series.mul(-1).clip(lower=0)
+
+
+def _is_liability_series(df: pd.DataFrame) -> pd.Series:
+    """Return a boolean mask for liability rows using type and sign fallbacks."""
+    account_type = (
+        df[ColumnNames.ACCOUNT_TYPE]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    return account_type.str.startswith("liabil") | (df[ColumnNames.AMOUNT] < 0)
 
 
 def calculate_account_info(
@@ -178,14 +221,11 @@ def calculate_metrics(
     required_cols = [ColumnNames.ACCOUNT_TYPE, ColumnNames.AMOUNT]
     _validate_dataframe(latest_data, required_cols, "latest_data")
     
+    liability_mask = _is_liability_series(latest_data)
+
     # Current period calculations
-    current_assets = latest_data[
-        latest_data[ColumnNames.ACCOUNT_TYPE] != AccountTypes.LIABILITY
-    ][ColumnNames.AMOUNT].sum()
-    
-    current_liabilities_raw = latest_data[
-        latest_data[ColumnNames.ACCOUNT_TYPE] == AccountTypes.LIABILITY
-    ][ColumnNames.AMOUNT].sum()
+    current_assets = latest_data.loc[~liability_mask, ColumnNames.AMOUNT].sum()
+    current_liabilities_raw = latest_data.loc[liability_mask, ColumnNames.AMOUNT].sum()
     
     current_liabilities = _convert_to_absolute(current_liabilities_raw)
     current_net_worth = current_assets + current_liabilities_raw
@@ -213,13 +253,9 @@ def calculate_metrics(
         try:
             _validate_dataframe(previous_data, required_cols, "previous_data")
             
-            prev_assets = previous_data[
-                previous_data[ColumnNames.ACCOUNT_TYPE] != AccountTypes.LIABILITY
-            ][ColumnNames.AMOUNT].sum()
-            
-            prev_liabilities_raw = previous_data[
-                previous_data[ColumnNames.ACCOUNT_TYPE] == AccountTypes.LIABILITY
-            ][ColumnNames.AMOUNT].sum()
+            previous_liability_mask = _is_liability_series(previous_data)
+            prev_assets = previous_data.loc[~previous_liability_mask, ColumnNames.AMOUNT].sum()
+            prev_liabilities_raw = previous_data.loc[previous_liability_mask, ColumnNames.AMOUNT].sum()
             
             prev_liabilities = _convert_to_absolute(prev_liabilities_raw)
             prev_net_worth = prev_assets + prev_liabilities_raw
@@ -274,23 +310,27 @@ def calculate_expense_summary(
     if num_months < 1:
         raise FinancialCalculationError("num_months must be at least 1")
     
-    # Use absolute values for expenses
-    total_spent = _convert_to_absolute(df[df[ColumnNames.CATEGORY]!='Income'][ColumnNames.AMOUNT].sum())
+    income_mask = is_income_transaction(df)
+    expense_mask = is_expense_transaction(df)
+    refund_mask = is_refund_transaction(df)
+
+    gross_spent = _convert_to_absolute(df.loc[expense_mask, ColumnNames.AMOUNT].sum())
+    total_refunds = df.loc[refund_mask, ColumnNames.AMOUNT].sum()
+    total_spent = max(gross_spent - total_refunds, 0.0)
     # scale budget with number of months selected
     total_budget = sum(budgets.values()) * num_months
     remaining = total_budget - total_spent
     num_transactions = len(df)
-    total_income = df[df[ColumnNames.CATEGORY]=='Income'][ColumnNames.AMOUNT].sum()
-    total_savings = total_income-total_spent
-    savings_rate = round((total_income-total_spent)*100/total_income,2)
-    # not sure about this
-    savings_rate = savings_rate if savings_rate>0.0 else 0
-    # total_savings = total_savings if savings_rate>0.0 else 0
+    total_income = df.loc[income_mask, ColumnNames.AMOUNT].sum()
+    total_savings = df[ColumnNames.AMOUNT].sum()
+    savings_rate = round((total_savings * 100 / total_income), 2) if total_income else 0.0
     
     avg_transaction = total_spent / num_transactions if num_transactions > 0 else 0.0
     
     return {
         'total_spent': total_spent,
+        'gross_spent': gross_spent,
+        'total_refunds': total_refunds,
         'total_budget': total_budget,
         'remaining': remaining,
         'num_transactions': num_transactions,
@@ -317,16 +357,12 @@ def calculate_category_spending(df: pd.DataFrame) -> pd.DataFrame:
     required_cols = [ColumnNames.CATEGORY, ColumnNames.AMOUNT]
     _validate_dataframe(df, required_cols, "df")
     
+    non_income_df = df[~is_income_transaction(df)].copy()
     category_spending = (
-        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        non_income_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .reset_index()
-    )
-    category_spending[ColumnNames.AMOUNT] = category_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
-    category_spending = category_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
-    category_spending = (
-        category_spending.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
-        .sum()
+        .pipe(_net_outflow)
+        .sort_values(ascending=False)
     )
 
     return category_spending
@@ -348,12 +384,13 @@ def calculate_account_spending(df: pd.DataFrame) -> pd.DataFrame:
     required_cols = [ColumnNames.ACCOUNT, ColumnNames.AMOUNT]
     _validate_dataframe(df, required_cols, "df")
     
+    non_income_df = df[~is_income_transaction(df)].copy()
     account_spending = (
-        df.groupby(ColumnNames.ACCOUNT)[ColumnNames.AMOUNT]
+        non_income_df.groupby(ColumnNames.ACCOUNT)[ColumnNames.AMOUNT]
         .sum()
+        .pipe(_net_outflow)
         .reset_index()
     )
-    account_spending[ColumnNames.AMOUNT] = account_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     account_spending = account_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
     
     return account_spending
@@ -380,12 +417,13 @@ def calculate_monthly_spending(df: pd.DataFrame) -> pd.DataFrame:
     # Create month as datetime for proper plotting
     df_copy[ColumnNames.MONTH] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
+    non_income_df = df_copy[~is_income_transaction(df_copy)].copy()
     monthly_spending = (
-        df_copy.groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
+        non_income_df.groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
         .sum()
+        .pipe(_net_outflow)
         .reset_index()
     )
-    monthly_spending[ColumnNames.AMOUNT] = monthly_spending[ColumnNames.AMOUNT].apply(_convert_to_absolute)
     monthly_spending = monthly_spending.sort_values(ColumnNames.MONTH)
     
     return monthly_spending
@@ -424,10 +462,11 @@ def calculate_budget_comparison(
         raise FinancialCalculationError("num_months must be at least 1")
     
     # Get absolute spending by category from the filtered data
+    non_income_df = df[~is_income_transaction(df)].copy()
     category_spending = (
-        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        non_income_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .apply(_convert_to_absolute)
+        .pipe(_net_outflow)
         .to_dict()
     )
     
@@ -475,10 +514,11 @@ def calculate_top_merchants(
     if limit < 1:
         raise FinancialCalculationError("limit must be at least 1")
     
+    non_income_df = df[~is_income_transaction(df)].copy()
     top_merchants = (
-        df.groupby(ColumnNames.MERCHANT)[ColumnNames.AMOUNT]
+        non_income_df.groupby(ColumnNames.MERCHANT)[ColumnNames.AMOUNT]
         .sum()
-        .apply(_convert_to_absolute)
+        .pipe(_net_outflow)
         .sort_values(ascending=False)
         .head(limit)
         .reset_index()
@@ -506,10 +546,11 @@ def calculate_spending_by_dow(df: pd.DataFrame) -> pd.DataFrame:
     df_copy = df.copy()
     df_copy['day_of_week'] = df_copy[ColumnNames.DATE].dt.day_name()
     
+    non_income_df = df_copy[~is_income_transaction(df_copy)].copy()
     dow_spending = (
-        df_copy.groupby('day_of_week')[ColumnNames.AMOUNT]
+        non_income_df.groupby('day_of_week')[ColumnNames.AMOUNT]
         .sum()
-        .apply(_convert_to_absolute)
+        .pipe(_net_outflow)
         .reindex(DAYS_OF_WEEK)
         .reset_index()
     )
@@ -538,13 +579,13 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
     # Create month as datetime for proper plotting
     df_copy[ColumnNames.MONTH] = df_copy[ColumnNames.DATE].dt.to_period('M').dt.to_timestamp()
     
+    non_income_df = df_copy[~is_income_transaction(df_copy)].copy()
     category_monthly = (
-        df_copy.groupby([ColumnNames.MONTH, ColumnNames.CATEGORY])[ColumnNames.AMOUNT]
+        non_income_df.groupby([ColumnNames.MONTH, ColumnNames.CATEGORY])[ColumnNames.AMOUNT]
         .sum()
         .reset_index()
     )
-    
-    category_monthly[ColumnNames.AMOUNT] = category_monthly[ColumnNames.AMOUNT].apply(_convert_to_absolute)
+    category_monthly[ColumnNames.AMOUNT] = _net_outflow(category_monthly[ColumnNames.AMOUNT])
     
     return category_monthly
 

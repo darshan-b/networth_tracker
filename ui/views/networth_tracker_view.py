@@ -13,6 +13,7 @@ from config import NetWorthConfig
 from app_constants import ColumnNames
 from data.validators import validate_dataframe
 from ui.components.utils import render_empty_state, render_tabs_safely
+from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
 from ui.views.networth_tracker.growth_over_time import show_growth_over_time
 from ui.views.networth_tracker.pivot_table import show_pivot_table
 from ui.views.networth_tracker.dashboard import render_dashboard
@@ -85,6 +86,9 @@ def show_networth_tracker(
     
     # Check explorer data (non-blocking)
     explorer_available = validate_dataframe(data, min_rows=1, context="")
+
+    inject_surface_styles()
+    _render_networth_tracker_summary(df_filtered)
     
     tab_configs = [
         {
@@ -115,6 +119,44 @@ def show_networth_tracker(
     ]
 
     render_tabs_safely(tab_configs, NetWorthConfig.TAB_NAMES)
+
+
+def _render_networth_tracker_summary(df_filtered: pd.DataFrame) -> None:
+    """Render a compact top-level summary so the Net Worth area feels cohesive."""
+    latest_month = df_filtered[ColumnNames.MONTH].max()
+    latest_rows = df_filtered[df_filtered[ColumnNames.MONTH] == latest_month]
+    latest_label = latest_rows[ColumnNames.MONTH_STR].iloc[0]
+
+    account_column = (
+        ColumnNames.ACCOUNT_KEY
+        if ColumnNames.ACCOUNT_KEY in df_filtered.columns
+        else ColumnNames.ACCOUNT
+    )
+    account_count = df_filtered[account_column].nunique()
+    subtype_count = df_filtered[ColumnNames.CATEGORY].nunique()
+    type_count = df_filtered[ColumnNames.ACCOUNT_TYPE].nunique()
+    institution_count = (
+        df_filtered[ColumnNames.INSTITUTION].nunique()
+        if ColumnNames.INSTITUTION in df_filtered.columns
+        else 0
+    )
+    month_count = df_filtered[ColumnNames.MONTH].nunique()
+
+    render_section_intro(
+        "Net Worth Tracker",
+        "Move from the latest balance snapshot into trend, table, projections, and exploratory analysis without losing structural context.",
+    )
+    pills = [
+        ("Latest Snapshot", latest_label),
+        ("Months", str(month_count)),
+        ("Accounts", str(account_count)),
+        ("Types", str(type_count)),
+        ("Subtypes", str(subtype_count)),
+    ]
+    if institution_count:
+        pills.append(("Institutions", str(institution_count)))
+    render_accent_pills(pills)
+    st.divider()
 
 
 def _render_data_explorer(data: Optional[pd.DataFrame]) -> None:

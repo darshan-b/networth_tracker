@@ -3,9 +3,18 @@
 import pandas as pd
 import streamlit as st
 
-from config import ChartConfig
-from app_constants import AccountTypes, ColumnNames
-from data.calculations import calculate_metrics
+from config import ChartConfig, NetWorthOverviewConfig
+from app_constants import ColumnNames
+from data.calculations import calculate_metrics, _is_liability_series
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_accent_pills,
+    render_metric_card,
+    render_page_hero,
+    render_panel_head,
+    render_panel_note,
+    render_section_intro,
+)
 from ui.charts import (
     create_donut_chart,
     create_horizontal_bar_chart,
@@ -28,171 +37,6 @@ def _format_signed_percent(value: float) -> str:
     return f"{value:+.2f}%"
 
 
-def _inject_dashboard_styles() -> None:
-    """Apply a more intentional visual treatment to the overview tab."""
-    st.markdown(
-        """
-        <style>
-        .nw-hero {
-            background:
-                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 34%),
-                linear-gradient(135deg, #f7faf9 0%, #eef7f3 52%, #f8f5ef 100%);
-            border: 1px solid rgba(15, 118, 110, 0.16);
-            border-radius: 24px;
-            padding: 1.5rem 1.7rem;
-            margin-bottom: 1rem;
-        }
-        .nw-eyebrow {
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-size: 0.78rem;
-            font-weight: 600;
-            color: #0f766e;
-            margin-bottom: 0.45rem;
-        }
-        .nw-title {
-            font-size: 2rem;
-            line-height: 1.1;
-            font-weight: 700;
-            color: #111827;
-            margin: 0;
-        }
-        .nw-subtitle {
-            margin-top: 0.6rem;
-            color: #4b5563;
-            font-size: 0.98rem;
-            max-width: 54rem;
-        }
-        .nw-hero-meta {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            padding: 0.45rem 0.7rem;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.8);
-            color: #1f2937;
-            font-size: 0.88rem;
-        }
-        .nw-card {
-            background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
-            border: 1px solid rgba(15, 23, 42, 0.08);
-            border-radius: 22px;
-            padding: 1rem 1.05rem;
-            min-height: 148px;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
-        }
-        .nw-card-label {
-            color: #6b7280;
-            font-size: 0.84rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-weight: 600;
-        }
-        .nw-card-value {
-            color: #111827;
-            font-size: 1.75rem;
-            line-height: 1.1;
-            font-weight: 700;
-            margin-top: 0.55rem;
-        }
-        .nw-card-delta {
-            margin-top: 0.55rem;
-            font-size: 0.95rem;
-            font-weight: 600;
-        }
-        .nw-card-delta.positive { color: #0f766e; }
-        .nw-card-delta.negative { color: #b91c1c; }
-        .nw-card-delta.neutral { color: #475569; }
-        .nw-card-caption {
-            color: #6b7280;
-            font-size: 0.88rem;
-            margin-top: 0.7rem;
-        }
-        .nw-section-title {
-            font-size: 1.15rem;
-            font-weight: 700;
-            color: #111827;
-            margin-bottom: 0.25rem;
-        }
-        .nw-section-copy {
-            color: #6b7280;
-            font-size: 0.95rem;
-            margin-bottom: 0.9rem;
-        }
-        .nw-accent-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.6rem;
-            margin-bottom: 1rem;
-        }
-        .nw-accent-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.45rem;
-            padding: 0.45rem 0.75rem;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.88);
-            border: 1px solid rgba(15, 23, 42, 0.08);
-            color: #334155;
-            font-size: 0.86rem;
-        }
-        .nw-panel-head {
-            border-radius: 20px;
-            padding: 0.95rem 1rem;
-            margin-bottom: 0.6rem;
-            border: 1px solid rgba(15, 23, 42, 0.08);
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbfa 100%);
-        }
-        .nw-panel-head.assets {
-            background: linear-gradient(180deg, #f5fbf7 0%, #edf8f2 100%);
-            border-color: rgba(15, 118, 110, 0.12);
-        }
-        .nw-panel-head.liabilities {
-            background: linear-gradient(180deg, #fff7f7 0%, #fff0f0 100%);
-            border-color: rgba(185, 28, 28, 0.12);
-        }
-        .nw-panel-head.composition {
-            background: linear-gradient(180deg, #f8f8fc 0%, #f4f2fb 100%);
-            border-color: rgba(67, 56, 202, 0.12);
-        }
-        .nw-panel-kicker {
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-size: 0.76rem;
-            font-weight: 700;
-            color: #64748b;
-            margin-bottom: 0.3rem;
-        }
-        .nw-panel-title {
-            color: #0f172a;
-            font-size: 1.02rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-        }
-        .nw-panel-copy {
-            color: #64748b;
-            font-size: 0.9rem;
-        }
-        .nw-panel-stat {
-            margin-top: 0.75rem;
-            font-size: 0.88rem;
-            color: #1f2937;
-            font-weight: 600;
-        }
-        .nw-panel-note {
-            padding: 0.9rem 1rem;
-            border-radius: 18px;
-            background: linear-gradient(180deg, #f9fafb 0%, #f3f6f8 100%);
-            border: 1px dashed rgba(100, 116, 139, 0.35);
-            color: #475569;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _render_hero(latest_month_label: str, metrics: dict, previous_month_exists: bool) -> None:
     """Render a hero banner for the overview tab."""
     if previous_month_exists:
@@ -210,88 +54,11 @@ def _render_hero(latest_month_label: str, metrics: dict, previous_month_exists: 
     else:
         direction_text = "Only one snapshot is available, so period-over-period movement is not shown yet."
 
-    st.markdown(
-        f"""
-        <div class="nw-hero">
-            <div class="nw-eyebrow">Net Worth Tracker</div>
-            <p class="nw-title">A cleaner view of where you stand right now.</p>
-            <div class="nw-subtitle">
-                This overview is designed to answer the big questions first: your current net worth,
-                balance mix, debt pressure, and the accounts shaping the latest snapshot.
-            </div>
-            <div class="nw-hero-meta">
-                <span>Latest snapshot</span>
-                <strong>{latest_month_label}</strong>
-                <span>&middot;</span>
-                <span>{direction_text}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_metric_card(
-    label: str,
-    value: str,
-    delta: str,
-    caption: str,
-    tone: str = "neutral",
-) -> None:
-    """Render a styled KPI card."""
-    st.markdown(
-        f"""
-        <div class="nw-card">
-            <div class="nw-card-label">{label}</div>
-            <div class="nw-card-value">{value}</div>
-            <div class="nw-card-delta {tone}">{delta}</div>
-            <div class="nw-card-caption">{caption}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_section_header(title: str, copy: str) -> None:
-    """Render a compact section header."""
-    st.markdown(
-        f"""
-        <div class="nw-section-title">{title}</div>
-        <div class="nw-section-copy">{copy}</div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _render_accent_pills(items: list[tuple[str, str]]) -> None:
-    """Render compact visual summary pills."""
-    pills_html = "".join(
-        [
-            f"<div class='nw-accent-pill'><strong>{label}</strong><span>{value}</span></div>"
-            for label, value in items
-        ]
-    )
-    st.markdown(f"<div class='nw-accent-row'>{pills_html}</div>", unsafe_allow_html=True)
-
-
-def _render_panel_head(
-    tone: str,
-    kicker: str,
-    title: str,
-    copy: str,
-    stat_text: str,
-) -> None:
-    """Render a styled intro block for a lower-half chart panel."""
-    st.markdown(
-        f"""
-        <div class="nw-panel-head {tone}">
-            <div class="nw-panel-kicker">{kicker}</div>
-            <div class="nw-panel-title">{title}</div>
-            <div class="nw-panel-copy">{copy}</div>
-            <div class="nw-panel-stat">{stat_text}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    render_page_hero(
+        "Net Worth",
+        "Overview",
+        "A quick read on your latest balance, debt load, and where the biggest balances sit.",
+        f"Latest snapshot {latest_month_label} | {direction_text}",
     )
 
 
@@ -308,9 +75,75 @@ def _style_overview_chart(fig, accent_color: str) -> None:
     fig.update_traces(marker_line_color=accent_color)
 
 
+def _render_chart_panel(
+    tone: str,
+    kicker: str,
+    title: str,
+    copy: str,
+    stat_text: str,
+    fig,
+    title_x: float = 0.08,
+) -> None:
+    """Render a full chart panel with shared styling."""
+    style = NetWorthOverviewConfig.PANEL_STYLES[tone]
+    render_panel_head(tone, kicker, title, copy, stat_text)
+    _style_overview_chart(fig, style["accent"])
+    fig.update_layout(title=title, title_x=title_x)
+    st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
+
+
+def _build_panel_spec(
+    tone: str,
+    kicker: str,
+    title: str,
+    copy: str,
+    stat_text: str,
+    fig,
+    title_x: float = 0.08,
+) -> dict:
+    """Build a reusable panel specification for rendering."""
+    return {
+        "tone": tone,
+        "kicker": kicker,
+        "title": title,
+        "copy": copy,
+        "stat_text": stat_text,
+        "fig": fig,
+        "title_x": title_x,
+    }
+
+
+def _render_panel_spec(panel_spec: dict) -> None:
+    """Render a chart panel from a reusable spec."""
+    _render_chart_panel(
+        tone=panel_spec["tone"],
+        kicker=panel_spec["kicker"],
+        title=panel_spec["title"],
+        copy=panel_spec["copy"],
+        stat_text=panel_spec["stat_text"],
+        fig=panel_spec["fig"],
+        title_x=panel_spec.get("title_x", 0.08),
+    )
+
+
+def _render_liability_empty_state() -> None:
+    """Render a consistent empty state for the liabilities panel."""
+    render_panel_head(
+        "liabilities",
+        "Liabilities",
+        "Debt Snapshot",
+        "You currently have no debt balances in the latest view, which keeps this side of the dashboard light.",
+        "No liabilities recorded in the current snapshot",
+    )
+    render_panel_note(
+        "No liabilities recorded.",
+        "This latest snapshot is currently all positive-side balances.",
+    )
+
+
 def render_dashboard(filtered_df: pd.DataFrame) -> None:
     """Render the overview dashboard for net worth analysis."""
-    _inject_dashboard_styles()
+    inject_surface_styles()
 
     latest_month = filtered_df[ColumnNames.MONTH].max()
     latest_month_rows = filtered_df[filtered_df[ColumnNames.MONTH] == latest_month]
@@ -327,18 +160,15 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
     metrics = calculate_metrics(latest_month_rows, previous_data)
     previous_month_exists = not previous_data.empty
 
-    holdings_data = latest_month_rows[
-        latest_month_rows[ColumnNames.ACCOUNT_TYPE] != AccountTypes.LIABILITY
-    ]
+    liability_mask = _is_liability_series(latest_month_rows)
+    holdings_data = latest_month_rows.loc[~liability_mask].copy()
     holdings_by_category = (
         holdings_data.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
         .sort_values(ascending=False)
     )
 
-    liability_data = latest_month_rows[
-        latest_month_rows[ColumnNames.ACCOUNT_TYPE] == AccountTypes.LIABILITY
-    ]
+    liability_data = latest_month_rows.loc[liability_mask].copy()
     liability_by_category = (
         liability_data.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
@@ -381,9 +211,9 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
 
     _render_hero(latest_month_label, metrics, previous_month_exists)
 
-    card_columns = st.columns(4)
+    card_columns = st.columns(3)
     with card_columns[0]:
-        _render_metric_card(
+        render_metric_card(
             "Net Worth",
             _format_currency(metrics["current_net_worth"]),
             (
@@ -395,15 +225,7 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
             "positive" if metrics["net_worth_change"] > 0 else "negative" if metrics["net_worth_change"] < 0 else "neutral",
         )
     with card_columns[1]:
-        _render_metric_card(
-            "Total Assets",
-            _format_currency(metrics["current_assets"]),
-            f"{len(holdings_data[ColumnNames.ACCOUNT_KEY].unique()) if ColumnNames.ACCOUNT_KEY in holdings_data.columns else len(holdings_data[ColumnNames.ACCOUNT].unique())} active accounts",
-            "Positive balances across your latest asset holdings.",
-            "neutral",
-        )
-    with card_columns[2]:
-        _render_metric_card(
+        render_metric_card(
             "Total Liabilities",
             _format_currency(metrics["current_liabilities"]),
             (
@@ -414,8 +236,8 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
             "Debt balances in the latest snapshot.",
             "negative" if metrics["current_liabilities"] > 0 else "neutral",
         )
-    with card_columns[3]:
-        _render_metric_card(
+    with card_columns[2]:
+        render_metric_card(
             "Debt Ratio",
             f"{metrics['debt_ratio']:.1f}%",
             (
@@ -430,11 +252,11 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
         )
 
     st.markdown("")
-    _render_section_header(
-        "Where Your Balance Sits",
-        "A side-by-side read of what is supporting your net worth and where debt is pulling against it.",
+    render_section_intro(
+        "Balance Structure",
+        "See what is supporting net worth and where debt is pulling against it.",
     )
-    _render_accent_pills(
+    render_accent_pills(
         [
             ("Largest Subtype", f"{largest_holding_subtype} | {_format_currency(largest_holding_value)}"),
             ("Debt Pressure", f"{metrics['debt_ratio']:.1f}% of balance structure"),
@@ -443,66 +265,49 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
     )
     holdings_col, liabilities_col = st.columns(2)
 
-    with holdings_col:
-        _render_panel_head(
-            "assets",
-            "Strengths",
-            "Holdings by Account Subtype",
-            "See which account subtypes are doing the most work for your current net worth.",
-            f"Top subtype: {largest_holding_subtype} at {_format_currency(largest_holding_value)}",
-        )
-        fig_holdings = create_horizontal_bar_chart(
+    holdings_panel = _build_panel_spec(
+        "assets",
+        "Strengths",
+        "Holdings by Account Subtype",
+        "See which subtypes carry the most weight in the latest snapshot.",
+        f"Top subtype: {largest_holding_subtype} at {_format_currency(largest_holding_value)}",
+        create_horizontal_bar_chart(
             holdings_by_category,
             "Holdings by Account Subtype",
-            "assets",
+            "networth",
             metrics["current_assets"],
-        )
-        _style_overview_chart(fig_holdings, "rgba(15, 118, 110, 0.22)")
-        fig_holdings.update_layout(title_x=0.08)
-        st.plotly_chart(fig_holdings, config=ChartConfig.STREAMLIT_CONFIG)
+        ),
+    )
+
+    liability_panel = _build_panel_spec(
+        "liabilities",
+        "Liabilities",
+        "Liabilities by Account Subtype",
+        "See where debt is concentrated in the latest snapshot.",
+        f"Largest liability subtype: {largest_liability_subtype} at {_format_currency(largest_liability_value)}",
+        create_horizontal_bar_chart(
+            liability_by_category,
+            "Liabilities by Account Subtype",
+            "networth",
+            metrics["current_liabilities"],
+        ),
+    ) if not liability_data.empty else None
+
+    with holdings_col:
+        _render_panel_spec(holdings_panel)
 
     with liabilities_col:
-        if liability_data.empty:
-            _render_panel_head(
-                "liabilities",
-                "Liabilities",
-                "Debt Snapshot",
-                "You currently have no debt balances in the latest view, which keeps this side of the dashboard light.",
-                "No liabilities recorded in the current snapshot",
-            )
-            st.markdown(
-                """
-                <div class="nw-panel-note">
-                    <strong>No liabilities recorded.</strong><br>
-                    This latest snapshot is currently all positive-side balances.
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        if liability_panel is None:
+            _render_liability_empty_state()
         else:
-            _render_panel_head(
-                "liabilities",
-                "Liabilities",
-                "Liabilities by Account Subtype",
-                "This panel shows where debt is concentrated so risk feels easier to read at a glance.",
-                f"Largest liability subtype: {largest_liability_subtype} at {_format_currency(largest_liability_value)}",
-            )
-            fig_liabilities = create_horizontal_bar_chart(
-                liability_by_category,
-                "Liabilities by Account Subtype",
-                "liabilities",
-                metrics["current_liabilities"],
-            )
-            _style_overview_chart(fig_liabilities, "rgba(185, 28, 28, 0.22)")
-            fig_liabilities.update_layout(title_x=0.08)
-            st.plotly_chart(fig_liabilities, config=ChartConfig.STREAMLIT_CONFIG)
+            _render_panel_spec(liability_panel)
 
     st.markdown("")
-    _render_section_header(
-        "Composition At A Glance",
-        "This layer shows how the latest snapshot breaks down across account types and which balances matter most.",
+    render_section_intro(
+        "Composition",
+        "Review the latest mix and the balances with the most weight.",
     )
-    _render_accent_pills(
+    render_accent_pills(
         [
             ("Dominant Type", f"{dominant_account_type} | {dominant_account_share:.1f}%"),
             ("Largest Account", f"{leading_account} | {_format_currency(leading_account_value)}"),
@@ -510,28 +315,28 @@ def render_dashboard(filtered_df: pd.DataFrame) -> None:
     )
     composition_col, top_accounts_col = st.columns([1, 1.15])
 
+    composition_panel = _build_panel_spec(
+        "neutral",
+        "Mix",
+        "Account Type Mix",
+        "Review the latest balance mix across major account types.",
+        f"Dominant type: {dominant_account_type} at {dominant_account_share:.1f}%",
+        create_donut_chart(account_type_dist, "Account Type Mix", color_scheme='networth'),
+        title_x=0.12,
+    )
+
+    top_accounts_panel = _build_panel_spec(
+        "neutral",
+        "Leaders",
+        "Largest Accounts",
+        "The balances with the most weight in the latest snapshot.",
+        f"Leading account: {leading_account} at {_format_currency(leading_account_value)}",
+        create_top_accounts_chart(top_accounts, color_scheme='networth'),
+    )
+
     with composition_col:
-        _render_panel_head(
-            "composition",
-            "Mix",
-            "Account Type Mix",
-            "A quick composition view to show whether your latest balance is concentrated in a few major buckets.",
-            f"Dominant type: {dominant_account_type} at {dominant_account_share:.1f}%",
-        )
-        fig_type = create_donut_chart(account_type_dist, "Account Type Mix")
-        _style_overview_chart(fig_type, "rgba(67, 56, 202, 0.18)")
-        fig_type.update_layout(title_x=0.12)
-        st.plotly_chart(fig_type, config=ChartConfig.STREAMLIT_CONFIG)
+        _render_panel_spec(composition_panel)
 
     with top_accounts_col:
-        _render_panel_head(
-            "composition",
-            "Leaders",
-            "Largest Accounts",
-            "The accounts with the most weight in the current snapshot, useful for concentration awareness.",
-            f"Leading account: {leading_account} at {_format_currency(leading_account_value)}",
-        )
-        fig_top = create_top_accounts_chart(top_accounts)
-        _style_overview_chart(fig_top, "rgba(67, 56, 202, 0.18)")
-        fig_top.update_layout(title="Largest Accounts", title_x=0.08)
-        st.plotly_chart(fig_top, config=ChartConfig.STREAMLIT_CONFIG)
+        _render_panel_spec(top_accounts_panel)
+

@@ -4,6 +4,12 @@ import numpy as np
 import io
 from config import NetWorthConfig, UIConfig
 from app_constants import ColumnNames
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 
 
 def calculate_progress(current_value, past_value):
@@ -43,7 +49,6 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
         month_cols (list): List of Monthly column names (already filtered by comparison type).
         comparison_type (str): "Monthly", "Quarter", or "Year" for primary comparison.
     """
-    st.markdown(NetWorthConfig.KPI_KEY_METRICS_TITLE)
     grand_total_row = pivot_df.iloc[-1]
 
     last_value = grand_total_row[month_cols[-1]]
@@ -64,13 +69,37 @@ def add_kpi_metrics(pivot_df, month_cols, comparison_type="Monthly"):
     period_label = NetWorthConfig.PERIOD_LABELS[comparison_type]
     
     with col1:
-        st.metric(f"**{NetWorthConfig.KPI_CURRENT_NET_WORTH}**", UIConfig.CURRENCY_FORMAT.format(last_value), f"{pct_change:,.2f}%" + f" ({comparison_label})", border=True)
+        render_metric_card(
+            NetWorthConfig.KPI_CURRENT_NET_WORTH,
+            UIConfig.CURRENCY_FORMAT.format(last_value),
+            f"{pct_change:,.2f}% ({comparison_label})",
+            "Latest grand-total value across the selected comparison periods.",
+            "positive" if pct_change > 0 else "negative" if pct_change < 0 else "neutral",
+        )
     with col2:
-        st.metric(f"**{NetWorthConfig.KPI_TOTAL_CHANGE}**", UIConfig.CURRENCY_FORMAT.format(total_progress), f"{total_progress_pct:,.2f}%", border=True)
+        render_metric_card(
+            NetWorthConfig.KPI_TOTAL_CHANGE,
+            UIConfig.CURRENCY_FORMAT.format(total_progress),
+            f"{total_progress_pct:,.2f}%",
+            "Overall change from the first selected period to the latest.",
+            "positive" if total_progress > 0 else "negative" if total_progress < 0 else "neutral",
+        )
     with col3:
-        st.metric(f"**{period_label.replace('ly', 's')} Tracked**", f"{len(month_cols)}", border=True, height='stretch')
+        render_metric_card(
+            f"{period_label.replace('ly', 's')} Tracked",
+            f"{len(month_cols)}",
+            comparison_type,
+            "How many periods are included in this summarized comparison.",
+            "neutral",
+        )
     with col4:
-        st.metric(f"**{NetWorthConfig.KPI_STARTING_NET_WORTH}**", UIConfig.CURRENCY_FORMAT.format(first_value), border=True, height='stretch')
+        render_metric_card(
+            NetWorthConfig.KPI_STARTING_NET_WORTH,
+            UIConfig.CURRENCY_FORMAT.format(first_value),
+            "Starting point",
+            "The earliest selected value in the comparison window.",
+            "neutral",
+        )
 
 
 def create_pivot_table(filtered_df, rollup=True, comparison_type="Monthly"):
@@ -279,8 +308,13 @@ def show_pivot_table(filtered_df):
     Args:
         filtered_df (pd.DataFrame): Filtered dataset with ColumnNames.ACCOUNT_TYPE, ColumnNames.CATEGORY, ColumnNames.MONTH_STR, and ColumnNames.AMOUNT.
     """
-    st.header(NetWorthConfig.PIVOT_TITLE)
-    st.caption("Compare balances by account type, or expand the table to include account subtype detail.")
+    inject_surface_styles()
+    render_page_hero(
+        "Net Worth",
+        "Table",
+        "Compare balances side by side across periods, either rolled up or in fuller detail.",
+        "Best for direct comparison and export.",
+    )
     
     # Validate data
     is_valid, error_msg = validate_data(filtered_df)
@@ -295,6 +329,11 @@ def show_pivot_table(filtered_df):
         st.warning("Need at least 2 periods of data for meaningful comparisons.")
         st.info(f"Currently have data for {unique_months} period(s). Please add more data or adjust filters.")
         st.stop()
+
+    render_section_intro(
+        "Controls",
+        "Choose the detail level, orientation, and comparison cadence.",
+    )
 
     # Controls
     col1, col2, col3 = st.columns(3)
@@ -314,6 +353,10 @@ def show_pivot_table(filtered_df):
         st.info(f"Need at least 2 {comparison_type.lower()}s of data. Currently have {len(month_cols)} period(s).")
         st.stop()
     
+    render_section_intro(
+        "Snapshot",
+        "A compact summary of the grand-total trend across the selected periods.",
+    )
     add_kpi_metrics(pivot_df, month_cols, comparison_type)
 
     # Apply Grand Total row styling with selected comparison type
@@ -325,6 +368,11 @@ def show_pivot_table(filtered_df):
     else:
         styled_df.set_index(ColumnNames.ACCOUNT_TYPE, inplace=True)
         
+    render_section_intro(
+        "Comparison",
+        "Review the styled pivot below or export the clean numeric table.",
+    )
+
     # Excel export (clean numbers)
     export_to_excel(pivot_df)
 

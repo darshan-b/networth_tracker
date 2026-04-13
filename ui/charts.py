@@ -10,6 +10,81 @@ pio.templates.default = ChartConfig.TEMPLATE
 from app_constants import ColumnNames
 import yfinance as yf
 
+
+def _format_bar_value_label(value: float) -> str:
+    """Format bar labels compactly so they fit cleanly above/outside bars."""
+    abs_value = abs(value)
+
+    if abs_value >= 1_000_000_000:
+        formatted = f"${value / 1_000_000_000:.1f}B"
+    elif abs_value >= 1_000_000:
+        formatted = f"${value / 1_000_000:.1f}M"
+    elif abs_value >= 1_000:
+        formatted = f"${value / 1_000:.0f}K"
+    else:
+        formatted = f"${value:,.0f}"
+
+    return formatted.replace(".0B", "B").replace(".0M", "M")
+
+
+def _add_bar_axis_headroom(fig: go.Figure, data: pd.Series, orientation: str) -> None:
+    """Extend the value axis so outside bar labels are not clipped."""
+    if data.empty:
+        return
+
+    max_positive = max(float(data.max()), 0.0)
+    min_negative = min(float(data.min()), 0.0)
+
+    if max_positive == 0 and min_negative == 0:
+        return
+
+    positive_padding = max_positive * 0.14 if max_positive else 0.0
+    negative_padding = abs(min_negative) * 0.14 if min_negative else 0.0
+
+    axis_range = [min_negative - negative_padding, max_positive + positive_padding]
+
+    if orientation == 'h':
+        fig.update_xaxes(range=axis_range)
+    else:
+        fig.update_yaxes(range=axis_range)
+
+
+def _apply_hover_style(fig: go.Figure) -> None:
+    """Apply a shared hover-card style so charts feel more product-like."""
+    fig.update_layout(
+        hoverlabel=dict(
+            bgcolor="rgba(255,255,255,0.96)",
+            bordercolor="rgba(15, 23, 42, 0.10)",
+            font=dict(
+                family=ChartConfig.FONT["family"],
+                size=13,
+                color="#0f172a",
+            ),
+        )
+    )
+
+
+def _apply_axis_style(fig: go.Figure, orientation: str = "v") -> None:
+    """Soften gridlines, reduce visual noise, and add a little more breathing room."""
+    if orientation == "h":
+        fig.update_xaxes(
+            showgrid=True,
+            gridcolor="rgba(148, 163, 184, 0.14)",
+            gridwidth=1,
+            zeroline=False,
+            nticks=5,
+        )
+        fig.update_yaxes(showgrid=False, zeroline=False)
+    else:
+        fig.update_xaxes(showgrid=False, zeroline=False)
+        fig.update_yaxes(
+            showgrid=True,
+            gridcolor="rgba(148, 163, 184, 0.14)",
+            gridwidth=1,
+            zeroline=False,
+            nticks=5,
+        )
+
 def create_bar_chart(
     data: pd.Series,
     title: Optional[str] = None,
@@ -26,7 +101,7 @@ def create_bar_chart(
         data: Series with labels as index and values
         title: Chart title
         orientation: 'h' for horizontal, 'v' for vertical
-        color_scheme: Color scheme name ('assets', 'liabilities', 'neutral', 'categorical')
+        color_scheme: Color scheme name ('assets', 'liabilities', 'neutral', 'categorical', 'networth')
         show_values: Whether to show value labels on bars
         percentage_total: If provided, show percentages in hover (value/percentage_total*100)
         **kwargs: Additional arguments for layout customization
@@ -60,9 +135,10 @@ def create_bar_chart(
     
     # Add value labels
     if show_values:
-        trace_config['text'] = [f'${val:,.0f}' for val in data.values]
+        trace_config['text'] = [_format_bar_value_label(val) for val in data.values]
         trace_config['textposition'] = 'outside'
         trace_config['textfont'] = dict(size=11)
+        trace_config['cliponaxis'] = False
     
     # Add hover template
     if percentage_total:
@@ -89,7 +165,7 @@ def create_bar_chart(
         'template': ChartConfig.TEMPLATE,
         'font': ChartConfig.FONT,
         'showlegend': False,
-        'margin': ChartConfig.MARGIN,
+        'margin': kwargs.get('margin', {'l': 36, 'r': 24, 't': 60, 'b': 42}),
         **axis_titles
     }
     
@@ -97,6 +173,13 @@ def create_bar_chart(
         layout_config['title'] = title
     
     fig.update_layout(**layout_config)
+    fig.update_traces(marker_line_width=0, marker_line_color="rgba(0,0,0,0)")
+    fig.update_traces(marker=dict(cornerradius=10))
+    _apply_hover_style(fig)
+    _apply_axis_style(fig, orientation)
+
+    if show_values:
+        _add_bar_axis_headroom(fig, data, orientation)
     
     return fig
 
@@ -146,7 +229,7 @@ def create_pie_chart(
         'template': ChartConfig.TEMPLATE,
         'font': ChartConfig.FONT,
         'showlegend': show_legend,
-        'margin': ChartConfig.MARGIN
+        'margin': kwargs.get('margin', {'l': 28, 'r': 28, 't': 56, 'b': 36})
     }
     
     if show_legend:
@@ -162,6 +245,7 @@ def create_pie_chart(
         layout_config['title'] = title
     
     fig.update_layout(**layout_config, uniformtext_minsize=16, uniformtext_mode='hide')
+    _apply_hover_style(fig)
     
     return fig
 
@@ -207,7 +291,7 @@ def create_line_chart(
         height=kwargs.get('height', ChartConfig.HEIGHT),
         font=ChartConfig.FONT,
         hovermode=ChartConfig.HOVER_MODE,
-        margin=ChartConfig.MARGIN,
+        margin=kwargs.get('margin', {'l': 36, 'r': 24, 't': 60, 'b': 42}),
         xaxis_title=x_title if x_title else x,
         yaxis_title=y_title if y_title else y
     )
@@ -216,6 +300,8 @@ def create_line_chart(
         line_width=kwargs.get('line_width', ChartConfig.LINE_WIDTH),
         marker=dict(size=kwargs.get('marker_size', ChartConfig.MARKER_SIZE))
     )
+    _apply_hover_style(fig)
+    _apply_axis_style(fig, "v")
     
     return fig
 
@@ -259,10 +345,14 @@ def create_stacked_bar_chart(
         template=ChartConfig.TEMPLATE,
         font=ChartConfig.FONT,
         hovermode=ChartConfig.HOVER_MODE,
-        margin=ChartConfig.MARGIN,
+        margin=kwargs.get('margin', {'l': 36, 'r': 24, 't': 60, 'b': 42}),
         xaxis_title=kwargs.get('x_label', ''),
         yaxis_title=kwargs.get('y_label', 'amount ($)')
     )
+    fig.update_traces(marker_line_width=0, marker_line_color="rgba(0,0,0,0)")
+    fig.update_traces(marker=dict(cornerradius=10))
+    _apply_hover_style(fig)
+    _apply_axis_style(fig, "v")
     
     return fig
 
@@ -307,11 +397,15 @@ def create_grouped_bar_chart(
         height=kwargs.get('height', ChartConfig.HEIGHT),
         template=ChartConfig.TEMPLATE,
         font=ChartConfig.FONT,
-        margin=ChartConfig.MARGIN,
+        margin=kwargs.get('margin', {'l': 36, 'r': 24, 't': 60, 'b': 42}),
         xaxis_title=kwargs.get('x_label', ''),
         yaxis_title=kwargs.get('y_label', 'amount ($)'),
         title=title
     )
+    fig.update_traces(marker_line_width=0, marker_line_color="rgba(0,0,0,0)")
+    fig.update_traces(marker=dict(cornerradius=10))
+    _apply_hover_style(fig)
+    _apply_axis_style(fig, "v")
     
     return fig
 
@@ -331,7 +425,8 @@ def _get_color_scheme(scheme_name: str, num_colors: int) -> List[str]:
         'assets': ColorSchemes.ASSETS,
         'liabilities': ColorSchemes.LIABILITIES,
         'neutral': ColorSchemes.NEUTRAL,
-        'categorical': ColorSchemes.CATEGORICAL
+        'categorical': ColorSchemes.CATEGORICAL,
+        'networth': ColorSchemes.NETWORTH,
     }
     
     colors = schemes.get(scheme_name, ColorSchemes.NEUTRAL)
@@ -355,16 +450,17 @@ def create_horizontal_bar_chart(data, title, color_scheme, current_total):
     )
 
 
-def create_donut_chart(data, title):
+def create_donut_chart(data, title, color_scheme='categorical'):
     """Legacy function - redirects to create_pie_chart."""
     return create_pie_chart(
         data=data,
         title=title,
-        hole=ChartConfig.DONUT_HOLE_SIZE
+        hole=ChartConfig.DONUT_HOLE_SIZE,
+        color_scheme=color_scheme,
     )
 
 
-def create_top_accounts_chart(top_accounts):
+def create_top_accounts_chart(top_accounts, color_scheme='neutral'):
     """Legacy function for top accounts chart."""
     data = pd.Series(
         top_accounts[ColumnNames.AMOUNT].values,
@@ -374,7 +470,7 @@ def create_top_accounts_chart(top_accounts):
     fig = create_bar_chart(
         data=data,
         orientation='h',
-        color_scheme='neutral'
+        color_scheme=color_scheme
     )
     
     # Add category to hover
