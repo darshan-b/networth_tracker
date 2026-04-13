@@ -8,6 +8,11 @@ from data.calculations import (
     is_income_transaction,
     is_refund_transaction,
 )
+from data.expense_intelligence import (
+    get_month_over_month_change,
+    get_spend_recommendations,
+    get_top_change_driver,
+)
 from ui.charts import create_donut_chart, create_line_chart, create_bar_chart
 from app_constants import ColumnNames
 from ui.components.surfaces import (
@@ -55,6 +60,8 @@ def render_overview_tab(df, budgets, num_months=1, period_start=None, period_end
     render_section_intro("Snapshot", "A quick read on spending, income, savings, and remaining budget.")
     _render_summary_metrics(summary, num_months)
     _render_overview_pills(df, summary)
+    _render_change_brief(df)
+    _render_action_brief(df)
 
     st.divider()
     render_section_intro("Spending View", "Use the mix, leaders, and trend together to see where spending concentrated and how it built up.")
@@ -138,6 +145,63 @@ def _render_overview_pills(df: pd.DataFrame, summary: dict) -> None:
             ("Categories", str(categories)),
         ]
     )
+
+
+def _render_change_brief(df: pd.DataFrame) -> None:
+    """Highlight period-over-period movement and the main spending driver."""
+    change = get_month_over_month_change(df)
+    if not change:
+        return
+
+    render_section_intro(
+        "What Changed",
+        "Compare the latest month in view with the month before it and identify the biggest driver.",
+    )
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        _render_change_metric("Spending Change", change["spending_delta"], change["spending_pct"], higher_is_worse=True)
+    with col2:
+        _render_change_metric("Income Change", change["income_delta"], change["income_pct"], higher_is_worse=False)
+    with col3:
+        _render_change_metric("Savings Change", change["savings_delta"], change["savings_pct"], higher_is_worse=False)
+
+    driver = get_top_change_driver(df, change["current_month"], change["previous_month"])
+    pills = [
+        ("Latest Month", change["current_month"].strftime("%b %Y")),
+    ]
+    if driver:
+        direction = "up" if driver["delta"] > 0 else "down"
+        pills.append(("Top Driver", f"{driver['category']} {direction} ${abs(driver['delta']):,.0f}"))
+    render_accent_pills(pills)
+
+
+def _render_change_metric(label: str, delta: float, change_pct: float, higher_is_worse: bool) -> None:
+    """Render a single period-over-period change card."""
+    tone = "neutral"
+    if delta != 0:
+        improved = delta < 0 if higher_is_worse else delta > 0
+        tone = "positive" if improved else "negative"
+    render_metric_card(
+        label,
+        f"${delta:+,.0f}",
+        f"{change_pct:+.1f}% vs prior month",
+        f"${delta:+,.0f} change from the previous month.",
+        tone,
+    )
+
+
+def _render_action_brief(df: pd.DataFrame) -> None:
+    """Render a concise action-oriented recommendation list."""
+    recommendations = get_spend_recommendations(df)
+    if not recommendations:
+        return
+
+    render_section_intro(
+        "Next Actions",
+        "Use the strongest current signals to decide where to review spending first.",
+    )
+    render_accent_pills([(f"Action {idx}", text) for idx, text in enumerate(recommendations, start=1)])
 
 
 def _render_category_pie_chart(df):
@@ -340,5 +404,3 @@ def _create_trend_chart(daily_spending):
     )
     fig.update_layout(margin={"l": 28, "r": 18, "t": 32, "b": 30})
     return fig
-
-

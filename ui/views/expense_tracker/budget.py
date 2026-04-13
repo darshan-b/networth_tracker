@@ -4,8 +4,10 @@ Displays budget vs actual spending comparison and detailed budget progress track
 """
 
 import streamlit as st
+import pandas as pd
 import plotly.graph_objects as go
 from data.calculations import calculate_budget_comparison
+from data.expense_intelligence import get_budget_recommendations, project_budget_outlook
 from app_constants import ColumnNames
 from ui.components.surfaces import (
     inject_surface_styles,
@@ -51,7 +53,10 @@ def render_budgets_tab(df, budgets, num_months=1):
             "Snapshot",
             "Quickly see how many categories are over budget, near the limit, or still on track.",
         )
-        _render_budget_summary_cards(budget_df)
+        pacing_summary = project_budget_outlook(df, budget_df, num_months)
+        _render_budget_summary_cards(budget_df, pacing_summary)
+        _render_budget_pacing_brief(pacing_summary)
+        _render_budget_recommendations(budget_df)
 
         render_section_intro(
             "Controls",
@@ -240,7 +245,7 @@ def _render_budget_progress(spent, budget, percentage):
         )
 
 
-def _render_budget_summary_cards(budget_df):
+def _render_budget_summary_cards(budget_df, pacing_summary=None):
     """Render quick budget health metrics from the current comparison data."""
     over_budget = int((budget_df["Percentage"] > 100).sum())
     near_limit = int(((budget_df["Percentage"] > 80) & (budget_df["Percentage"] <= 100)).sum())
@@ -260,7 +265,74 @@ def _render_budget_summary_cards(budget_df):
         [
             ("Tracked Categories", str(len(budget_df))),
             ("Highest Pressure", f"{budget_df['Percentage'].max():.0f}%" if not budget_df.empty else "0%"),
+            *(
+                [
+                    ("Projected Month-End", f"${pacing_summary['projected_spend_total']:,.0f}"),
+                ] if pacing_summary and pacing_summary.get("mode") == "projection" else []
+            ),
         ]
+    )
+
+
+def _render_budget_pacing_brief(pacing_summary):
+    """Render forward-looking budget pacing context."""
+    if not pacing_summary:
+        return
+
+    render_section_intro(
+        "Pacing",
+        "Use the current run rate to see whether this period is likely to finish comfortably or under pressure.",
+    )
+
+    if pacing_summary["mode"] == "projection":
+        col1, col2, col3 = st.columns(3)
+        remaining_total = pacing_summary["projected_remaining_total"]
+        with col1:
+            render_metric_card(
+                "Projected Month-End Spend",
+                f"${pacing_summary['projected_spend_total']:,.0f}",
+                f"{pacing_summary['elapsed_days']} of {pacing_summary['total_days']} days observed",
+                "Projected full-month spend at the current pace.",
+                "negative",
+            )
+        with col2:
+            render_metric_card(
+                "Projected Remaining",
+                f"${remaining_total:,.0f}",
+                "Budget after projected month-end spend",
+                "Estimated room left if the current pace holds.",
+                "positive" if remaining_total >= 0 else "negative",
+            )
+        with col3:
+            render_metric_card(
+                "Projected Risk Categories",
+                str(pacing_summary["at_risk_count"]),
+                "Categories likely to finish over budget",
+                "Categories projected to exceed budget at the current pace.",
+                "negative" if pacing_summary["at_risk_count"] else "positive",
+            )
+
+        if pacing_summary["lead_risk_category"]:
+            render_accent_pills(
+                [
+                    ("Lead Risk", str(pacing_summary["lead_risk_category"])),
+                    ("Projected Overage", f"${pacing_summary['lead_risk_overage']:,.0f}"),
+                ]
+            )
+    
+
+def _render_budget_recommendations(budget_df):
+    """Show a small set of budget actions based on current pressure."""
+    recommendations = get_budget_recommendations(budget_df)
+    if not recommendations:
+        return
+
+    render_section_intro(
+        "Recommended Focus",
+        "Start with the categories where intervention is most likely to matter.",
+    )
+    render_accent_pills(
+        [(item["category"], item["message"]) for item in recommendations]
     )
 
 
@@ -299,4 +371,3 @@ def _apply_budget_filters(budget_df):
         working_df = working_df.sort_values(ColumnNames.CATEGORY)
 
     return working_df.reset_index(drop=True)
-

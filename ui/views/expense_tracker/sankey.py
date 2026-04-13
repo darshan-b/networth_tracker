@@ -6,12 +6,15 @@ Visualizes cash flow from total expenses through categories to subcategories.
 import streamlit as st
 import pandas as pd
 import json
+from typing import TypedDict
 from urllib.parse import quote
 from app_constants import ColumnNames
-from data.calculations import calculate_expense_summary, _net_outflow
+from data.calculations import calculate_expense_summary, calculate_net_outflow
+from data.expense_intelligence import get_month_over_month_change, get_top_change_driver
 from ui.views.expense_tracker.overview import _render_summary_metrics
 from ui.components.surfaces import (
     inject_surface_styles,
+    render_accent_pills,
     render_page_hero,
     render_section_intro,
 )
@@ -37,6 +40,37 @@ CATEGORY_COLORS = {
 DEFAULT_COLOR = '#94a3b8'
 
 
+class SankeyNode(TypedDict):
+    """Serialized Sankey node payload sent to the client renderer."""
+
+    name: str
+    displayName: str
+    labelText: str
+    level: int
+    percent: float | None
+    parentPercent: float | None
+    parentName: str | None
+    aggregated: bool
+    color: str
+    column: int
+    sortOrder: int
+
+
+class SankeyLink(TypedDict):
+    """Serialized Sankey link payload sent to the client renderer."""
+
+    source: int
+    target: int
+    value: float
+
+
+class SankeyData(TypedDict):
+    """Top-level Sankey data payload."""
+
+    nodes: list[SankeyNode]
+    links: list[SankeyLink]
+
+
 def _format_currency(amount: float) -> str:
     """Format a numeric amount for chart labels."""
     return f"${amount:,.2f}"
@@ -58,8 +92,8 @@ def _build_subcategory_label(name: str, percent: float, show_percent: bool) -> s
 
 
 def _append_node(
-    nodes: list,
-    node_map: dict,
+    nodes: list[SankeyNode],
+    node_map: dict[str, int],
     name: str,
     display_name: str,
     color: str,
@@ -120,6 +154,7 @@ def render_sankey_tab(df, budgets, num_months):
         "Start with the top-line totals before reading the flow.",
     )
     _render_summary_metrics(summary, num_months)
+    _render_sankey_brief(df, summary)
 
     # Generate Sankey data
     try:
@@ -134,7 +169,7 @@ def render_sankey_tab(df, budgets, num_months):
         return
 
 
-def _generate_sankey_data(df):
+def _generate_sankey_data(df: pd.DataFrame) -> SankeyData:
     """
     Generate nodes and links for a Sankey diagram showing income and expenses.
     
@@ -144,9 +179,9 @@ def _generate_sankey_data(df):
     Returns:
         dict: Sankey data with 'nodes' and 'links' keys.
     """
-    nodes = []
-    links = []
-    node_map = {}
+    nodes: list[SankeyNode] = []
+    links: list[SankeyLink] = []
+    node_map: dict[str, int] = {}
     node_idx = 0
 
     # Separate income and expenses
@@ -156,20 +191,7 @@ def _generate_sankey_data(df):
     total_income = income_df[ColumnNames.AMOUNT].sum()
 
     # === Income Sources ===
-    income_sources = {}
-    for category in income_df[ColumnNames.CATEGORY].unique():
-        cat_df = income_df[income_df[ColumnNames.CATEGORY] == category]
-        if (cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != '')).any():
-            sub_totals = (
-                cat_df[cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != '')]
-                .groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
-                .sum()
-            )
-            for sub, amount in sub_totals.items():
-                source_name = f"{category} - {sub}"
-                income_sources[source_name] = amount
-        else:
-            income_sources[category] = cat_df[ColumnNames.AMOUNT].sum()
+    income_sources = _collect_income_sources(income_df)
 
     # Add income source nodes
     sorted_income_sources = sorted(income_sources.items(), key=lambda x: x[1], reverse=True)
@@ -212,15 +234,7 @@ def _generate_sankey_data(df):
         })
 
     # === Expenses by Category ===
-    category_totals = (
-        expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
-        .sum()
-        .pipe(_net_outflow)
-    )
-    category_totals = (
-        category_totals[category_totals > 0]
-        .sort_values(ascending=False)
-    )
+    category_totals = _calculate_category_totals(expense_df)
     total_expenses = category_totals.sum()
 
     for order, (category, amount) in enumerate(category_totals.items()):
@@ -282,7 +296,65 @@ def _generate_sankey_data(df):
     return {"nodes": nodes, "links": links}
 
 
-def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx, category_order):
+def _render_sankey_brief(df: pd.DataFrame, summary: dict) -> None:
+    """Add a concise narrative above the Sankey chart."""
+    expense_df = df[df[ColumnNames.CATEGORY] != "Income"]
+    category_totals = _calculate_category_totals(expense_df)
+    top_categories = list(category_totals.head(3).items())
+    change = get_month_over_month_change(df)
+    driver = get_top_change_driver(df, change["current_month"], change["previous_month"]) if change else None
+
+    pills = [
+        ("Savings Rate", f"{summary.get('savings_rate', 0):.1f}%"),
+        *[
+            (f"Top {idx}", f"{name} ${amount:,.0f}")
+            for idx, (name, amount) in enumerate(top_categories, start=1)
+        ],
+    ]
+    if driver:
+        pills.append(("Change Driver", f"{driver['category']} ${abs(driver['delta']):,.0f}"))
+    if pills:
+        render_accent_pills(pills)
+
+
+def _collect_income_sources(income_df: pd.DataFrame) -> dict[str, float]:
+    """Collect income-source totals, splitting by subcategory when present."""
+    income_sources: dict[str, float] = {}
+    for category in income_df[ColumnNames.CATEGORY].unique():
+        cat_df = income_df[income_df[ColumnNames.CATEGORY] == category]
+        if (cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != "")).any():
+            sub_totals = (
+                cat_df[cat_df[ColumnNames.SUBCATEGORY].notna() & (cat_df[ColumnNames.SUBCATEGORY] != "")]
+                .groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
+                .sum()
+            )
+            for sub, amount in sub_totals.items():
+                income_sources[f"{category} - {sub}"] = float(amount)
+        else:
+            income_sources[category] = float(cat_df[ColumnNames.AMOUNT].sum())
+    return income_sources
+
+
+def _calculate_category_totals(expense_df: pd.DataFrame) -> pd.Series:
+    """Calculate positive net outflow totals by category."""
+    category_totals = (
+        expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+        .pipe(calculate_net_outflow)
+    )
+    return category_totals[category_totals > 0].sort_values(ascending=False)
+
+
+def _add_subcategory_nodes(
+    df: pd.DataFrame,
+    category: str,
+    category_total: float,
+    node_map: dict[str, int],
+    nodes: list[SankeyNode],
+    links: list[SankeyLink],
+    node_idx: int,
+    category_order: int,
+) -> int:
     """
     Add subcategory nodes and links for a given category.
     
@@ -310,7 +382,7 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     subcategory_totals = (
         subcategory_df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
     )
     subcategory_totals = (
         subcategory_totals[subcategory_totals > 0]
@@ -323,7 +395,7 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     total_expenses = (
         df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .sum()
     )
     category_percent = (category_total / total_expenses * 100) if total_expenses > 0 else 0

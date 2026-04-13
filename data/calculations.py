@@ -4,7 +4,7 @@ This module provides financial calculation utilities for analyzing account data,
 expenses, budgets, and trends.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, Iterable, List, Optional, TypedDict
 
 import pandas as pd
 import numpy as np
@@ -93,9 +93,67 @@ def classify_transaction_type(series: pd.Series) -> str:
     return TransactionTypes.EXPENSE
 
 
-def _net_outflow(series: pd.Series) -> pd.Series:
+def calculate_net_outflow(series: pd.Series) -> pd.Series:
     """Convert signed grouped amounts into positive spend values after refunds."""
     return series.mul(-1).clip(lower=0)
+
+
+def _net_outflow(series: pd.Series) -> pd.Series:
+    """Backward-compatible private alias for net outflow conversion."""
+    return calculate_net_outflow(series)
+
+
+def build_transaction_type_mask(df: pd.DataFrame, selected_types: Iterable[str]) -> pd.Series:
+    """Build a filter mask for the requested transaction types."""
+    selected = set(selected_types)
+    if not selected:
+        return pd.Series(False, index=df.index)
+
+    all_types = {TransactionTypes.EXPENSE, "Refund/Credit", TransactionTypes.INCOME}
+    if selected >= all_types:
+        return pd.Series(True, index=df.index)
+
+    mask = pd.Series(False, index=df.index)
+    if TransactionTypes.EXPENSE in selected:
+        mask = mask | is_expense_transaction(df)
+    if "Refund/Credit" in selected:
+        mask = mask | is_refund_transaction(df)
+    if TransactionTypes.INCOME in selected:
+        mask = mask | is_income_transaction(df)
+    return mask
+
+
+class TransactionSummaryMetrics(TypedDict):
+    """Summary metrics for a filtered transaction set."""
+
+    net_expenses: float
+    expense_count: int
+    income_total: float
+    refund_total: float
+    refund_count: int
+    net_cash_flow: float
+
+
+def calculate_transaction_summary_metrics(df: pd.DataFrame) -> TransactionSummaryMetrics:
+    """Calculate reusable summary metrics for filtered transaction tables."""
+    _validate_dataframe(df, [ColumnNames.AMOUNT, ColumnNames.CATEGORY], "df")
+
+    expenses_filtered = df[is_expense_transaction(df)]
+    refunds_filtered = df[is_refund_transaction(df)]
+    income_filtered = df[is_income_transaction(df)]
+
+    gross_expenses = _convert_to_absolute(expenses_filtered[ColumnNames.AMOUNT].sum())
+    refund_total = float(refunds_filtered[ColumnNames.AMOUNT].sum())
+
+    return {
+        "net_expenses": max(gross_expenses - refund_total, 0.0),
+        "expense_count": int(len(expenses_filtered)),
+        "income_total": float(income_filtered[ColumnNames.AMOUNT].sum()),
+        "refund_total": refund_total,
+        "refund_count": int(len(refunds_filtered)),
+        "net_cash_flow": float(df[ColumnNames.AMOUNT].sum()),
+    }
+
 
 
 def _is_liability_series(df: pd.DataFrame) -> pd.Series:
@@ -361,11 +419,38 @@ def calculate_category_spending(df: pd.DataFrame) -> pd.DataFrame:
     category_spending = (
         non_income_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .sort_values(ascending=False)
     )
 
     return category_spending
+
+
+def calculate_subcategory_spending(df: pd.DataFrame) -> pd.Series:
+    """Calculate net spending by subcategory after refunds/credits.
+
+    Args:
+        df: Transactions dataframe with columns [ColumnNames.SUBCATEGORY, ColumnNames.AMOUNT]
+
+    Returns:
+        Series indexed by subcategory with positive net outflow values sorted descending.
+
+    Raises:
+        FinancialCalculationError: If data is invalid
+    """
+    required_cols = [ColumnNames.SUBCATEGORY, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
+
+    non_income_df = df[~is_income_transaction(df)].copy()
+    subcategory_spending = (
+        non_income_df[non_income_df[ColumnNames.SUBCATEGORY].notna() & (non_income_df[ColumnNames.SUBCATEGORY] != "")]
+        .groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+        .pipe(calculate_net_outflow)
+        .sort_values(ascending=False)
+    )
+
+    return subcategory_spending
 
 
 def calculate_account_spending(df: pd.DataFrame) -> pd.DataFrame:
@@ -388,7 +473,7 @@ def calculate_account_spending(df: pd.DataFrame) -> pd.DataFrame:
     account_spending = (
         non_income_df.groupby(ColumnNames.ACCOUNT)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .reset_index()
     )
     account_spending = account_spending.sort_values(ColumnNames.AMOUNT, ascending=False)
@@ -421,12 +506,46 @@ def calculate_monthly_spending(df: pd.DataFrame) -> pd.DataFrame:
     monthly_spending = (
         non_income_df.groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .reset_index()
     )
     monthly_spending = monthly_spending.sort_values(ColumnNames.MONTH)
     
     return monthly_spending
+
+
+def calculate_monthly_cash_flow(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate monthly income, net expenses, and savings for cash-flow views."""
+    required_cols = [ColumnNames.DATE, ColumnNames.CATEGORY, ColumnNames.AMOUNT]
+    _validate_dataframe(df, required_cols, "df")
+
+    working_df = df.copy()
+    working_df[ColumnNames.MONTH] = working_df[ColumnNames.DATE].dt.to_period("M").dt.to_timestamp()
+
+    income_mask = is_income_transaction(working_df)
+    non_income_mask = ~income_mask
+
+    income = (
+        working_df.loc[income_mask]
+        .groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
+        .sum()
+        .rename("income")
+    )
+    expenses = (
+        working_df.loc[non_income_mask]
+        .groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
+        .sum()
+        .pipe(calculate_net_outflow)
+        .rename("expenses")
+    )
+    savings = (
+        working_df.groupby(ColumnNames.MONTH)[ColumnNames.AMOUNT]
+        .sum()
+        .rename("savings")
+    )
+
+    cash_flow = pd.concat([income, expenses, savings], axis=1).fillna(0.0).reset_index()
+    return cash_flow.sort_values(ColumnNames.MONTH)
 
 
 def calculate_budget_comparison(
@@ -466,7 +585,7 @@ def calculate_budget_comparison(
     category_spending = (
         non_income_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .to_dict()
     )
     
@@ -518,7 +637,7 @@ def calculate_top_merchants(
     top_merchants = (
         non_income_df.groupby(ColumnNames.MERCHANT)[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .sort_values(ascending=False)
         .head(limit)
         .reset_index()
@@ -550,7 +669,7 @@ def calculate_spending_by_dow(df: pd.DataFrame) -> pd.DataFrame:
     dow_spending = (
         non_income_df.groupby('day_of_week')[ColumnNames.AMOUNT]
         .sum()
-        .pipe(_net_outflow)
+        .pipe(calculate_net_outflow)
         .reindex(DAYS_OF_WEEK)
         .reset_index()
     )
@@ -585,7 +704,7 @@ def calculate_category_trends(df: pd.DataFrame) -> pd.DataFrame:
         .sum()
         .reset_index()
     )
-    category_monthly[ColumnNames.AMOUNT] = _net_outflow(category_monthly[ColumnNames.AMOUNT])
+    category_monthly[ColumnNames.AMOUNT] = calculate_net_outflow(category_monthly[ColumnNames.AMOUNT])
     
     return category_monthly
 
@@ -597,8 +716,6 @@ def calculate_portfolio_metrics_from_historical(latest_df, summary_df):
     
     # Filter to only currently owned positions
     latest_owned = latest_df[latest_df['ticker'].isin(currently_owned)]
-    st.info('her')
-    
     total_value = latest_owned['Current Value'].sum()
     total_cost = latest_owned['Cost Basis'].sum()
     total_gain_loss = latest_owned['Total Gain/Loss'].sum()

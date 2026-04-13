@@ -10,10 +10,22 @@ import plotly.graph_objects as go
 from config import ChartConfig
 from ui.charts import create_bar_chart, create_line_chart
 from data.calculations import (
+    calculate_category_spending,
+    calculate_expense_summary,
+    calculate_net_outflow,
+    calculate_monthly_cash_flow,
+    calculate_subcategory_spending,
     calculate_top_merchants,
     calculate_spending_by_dow,
     calculate_category_trends,
+    is_income_transaction,
     is_expense_transaction,
+)
+from data.expense_intelligence import (
+    get_month_over_month_change,
+    get_spend_anomaly,
+    get_spend_recommendations,
+    get_top_change_driver,
 )
 from app_constants import ColumnNames
 from ui.components.surfaces import (
@@ -54,6 +66,8 @@ def render_insights_tab(df):
     
     render_section_intro("Cash Flow", "Review the monthly relationship between income, expenses, and savings.")
     _render_cash_flow(df)
+    _render_change_story(df)
+    _render_recommendations(df)
     
     render_section_intro("Snapshot", "Review the biggest spending patterns before drilling into category breakdowns.")
     _render_summary_statistics(df)
@@ -90,23 +104,10 @@ def _render_top_merchants(df):
             return
 
         top_merchants = calculate_top_merchants(df, limit=10)
-        top_categories = (
-            expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
-            .sum()
-            .abs()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-        )
-        top_subcategories = (
-            expense_df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
-            .sum()
-            .abs()
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index()
-        )
-        total_spend = abs(expense_df[ColumnNames.AMOUNT].sum())
+        category_spending = calculate_category_spending(df)
+        top_categories = category_spending.head(10).reset_index()
+        top_subcategories = calculate_subcategory_spending(df).head(10).reset_index()
+        total_spend = float(category_spending.sum())
         top_category = top_categories.iloc[0] if not top_categories.empty else None
         render_accent_pills(
             [
@@ -151,6 +152,49 @@ def _render_top_merchants(df):
         st.error(f"Error rendering top merchants: {str(e)}")
 
 
+def _render_change_story(df: pd.DataFrame) -> None:
+    """Summarize what changed recently and what drove it."""
+    change = get_month_over_month_change(df)
+    if not change:
+        return
+
+    render_section_intro(
+        "What Changed",
+        "Start with the biggest movement from the previous month and the likely driver behind it.",
+    )
+
+    driver = get_top_change_driver(df, change["current_month"], change["previous_month"])
+    anomaly = get_spend_anomaly(df)
+
+    render_accent_pills(
+        [
+            ("Spend", _format_change_pill(change["spending_delta"], change["spending_pct"])),
+            ("Income", _format_change_pill(change["income_delta"], change["income_pct"])),
+            ("Savings", _format_change_pill(change["savings_delta"], change["savings_pct"])),
+            *([("Top Driver", f"{driver['category']} ${abs(driver['delta']):,.0f}")] if driver else []),
+            *([("Anomaly", f"{anomaly['date']}: {anomaly['multiple']:.1f}x typical")] if anomaly else []),
+        ]
+    )
+
+
+def _format_change_pill(delta: float, pct: float) -> str:
+    """Format a compact month-over-month delta label."""
+    return f"{delta:+,.0f} ({pct:+.1f}%)"
+
+
+def _render_recommendations(df: pd.DataFrame) -> None:
+    """Show a concise set of actions from the current insight signals."""
+    recommendations = get_spend_recommendations(df)
+    if not recommendations:
+        return
+
+    render_section_intro(
+        "Recommended Actions",
+        "Use these signals to decide where to investigate before drilling into raw rows.",
+    )
+    render_accent_pills([(f"Action {idx}", text) for idx, text in enumerate(recommendations, start=1)])
+
+
 def _render_dow_spending(df):
     """
     Render bar chart of spending by day of week.
@@ -190,8 +234,9 @@ def _render_avg_transaction_by_category(df):
     st.markdown("#### Average Transaction by Category")
     
     try:
+        expense_df = df[is_expense_transaction(df)].copy()
         avg_by_category = (
-            df.groupby(ColumnNames.DATE)[ColumnNames.AMOUNT]
+            expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
             .apply(lambda x: abs(x.mean()))
             .sort_values(ascending=False)
             .reset_index()
@@ -203,7 +248,7 @@ def _render_avg_transaction_by_category(df):
         
         fig = px.bar(
             avg_by_category, 
-            x=ColumnNames.DATE, 
+            x=ColumnNames.CATEGORY, 
             y=ColumnNames.AMOUNT,
             color=ColumnNames.AMOUNT,
             color_continuous_scale='Purples'
@@ -231,13 +276,17 @@ def _render_summary_statistics(df):
     if expense_df.empty:
         st.info("No expense rows available for summary analysis.")
         return
-    total_amount = abs(expense_df[ColumnNames.AMOUNT].sum())
+    summary = calculate_expense_summary(df, budgets={}, num_months=1)
+    total_amount = summary["total_spent"]
+    category_spending = calculate_category_spending(df)
+    monthly_net_spend = calculate_monthly_cash_flow(df)
+    non_income_df = df[~is_income_transaction(df)].copy()
 
     # Row 1: Core spending metrics
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        render_metric_card("Total Spend", f"${total_amount:,.0f}", "Selected period", "All non-income spend in view.", "negative")
+        render_metric_card("Total Spend", f"${total_amount:,.0f}", "Selected period", "Net spend after refunds and credits.", "negative")
 
     with col2:
         avg_amount = abs(expense_df[ColumnNames.AMOUNT].mean()) if not expense_df.empty else 0
@@ -261,7 +310,12 @@ def _render_summary_statistics(df):
         render_metric_card("Largest Transaction", f"${largest_amount:,.0f}", "High watermark", largest_caption, "negative")
 
     with col5:
-        daily_totals = expense_df.groupby(expense_df[ColumnNames.DATE].dt.date)[ColumnNames.AMOUNT].sum().abs() if not expense_df.empty else pd.Series(dtype=float)
+        daily_totals = (
+            non_income_df.groupby(non_income_df[ColumnNames.DATE].dt.date)[ColumnNames.AMOUNT]
+            .sum()
+            .pipe(calculate_net_outflow)
+            if not non_income_df.empty else pd.Series(dtype=float)
+        )
         if daily_totals.empty:
             render_metric_card("Most Expensive Day", "N/A", "$0", "No daily spend totals available.", "neutral")
         else:
@@ -290,14 +344,12 @@ def _render_summary_statistics(df):
     col8, col9 = st.columns(2)
     with col8:
         # Row 8: Month-over-month change (if applicable)
-        if expense_df[ColumnNames.DATE].dt.month.nunique() > 1:
-            current_month_num = expense_df[ColumnNames.DATE].dt.month.max()
-            current_month = expense_df[expense_df[ColumnNames.DATE].dt.month == current_month_num]
-            prev_month = expense_df[expense_df[ColumnNames.DATE].dt.month == current_month_num - 1]
-
-            if not prev_month.empty:
-                current_total = abs(current_month[ColumnNames.AMOUNT].sum())
-                prev_total = abs(prev_month[ColumnNames.AMOUNT].sum())
+        if len(monthly_net_spend) > 1:
+            current_row = monthly_net_spend.iloc[-1]
+            prev_row = monthly_net_spend.iloc[-2]
+            current_total = current_row["expenses"]
+            prev_total = prev_row["expenses"]
+            if prev_total > 0 or current_total > 0:
                 change_pct = ((current_total - prev_total) / prev_total * 100) if prev_total > 0 else 0
 
                 render_metric_card(
@@ -309,10 +361,13 @@ def _render_summary_statistics(df):
                 )
 
     with col9:
-        top_category = expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().idxmax()
-        top_category_amount = expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT].sum().abs().max()
-        percentage = (top_category_amount / total_amount) * 100 if total_amount else 0
-        render_metric_card("Top Spending Category", top_category, f"{percentage:.1f}% of total", f"${top_category_amount:,.0f} of total spend.", "neutral")
+        if category_spending.empty:
+            render_metric_card("Top Spending Category", "N/A", "0.0% of total", "$0 of total spend.", "neutral")
+        else:
+            top_category = category_spending.idxmax()
+            top_category_amount = category_spending.max()
+            percentage = (top_category_amount / total_amount) * 100 if total_amount else 0
+            render_metric_card("Top Spending Category", top_category, f"{percentage:.1f}% of total", f"${top_category_amount:,.0f} of total spend.", "neutral")
 
 
 def _render_category_trends(df):
@@ -352,47 +407,43 @@ def _render_cash_flow(df):
     # Create figure
     fig = go.Figure()
 
-    working_df = df.copy()
-    working_df['month'] = working_df[ColumnNames.DATE].dt.to_period('M').astype(str)
+    cash_flow = calculate_monthly_cash_flow(df)
+    if cash_flow.empty:
+        st.info("No monthly cash-flow data available.")
+        return
 
-    income = working_df[working_df[ColumnNames.CATEGORY]=='Income']
-    income = income.groupby(['month'])[ColumnNames.AMOUNT].sum()
-
-    expense = working_df[is_expense_transaction(working_df)]
-    expense = expense.groupby(['month'])[ColumnNames.AMOUNT].sum()
-
-    savings = working_df.groupby(['month'])[ColumnNames.AMOUNT].sum()
+    month_labels = cash_flow[ColumnNames.MONTH].dt.strftime("%b %Y")
 
     # Add positive bars (green)
     fig.add_trace(go.Bar(
-        x=income.index,
-        y=income.values,
+        x=month_labels,
+        y=cash_flow["income"],
         marker_color='rgba(144, 238, 144, 0.9)',
         hovertemplate='Income: %{y:$,.0f}<extra></extra>',
         name='Income',
         textposition='inside',
-        text = income.values,
+        text = cash_flow["income"],
         texttemplate='$%{text:,.0f}',
         insidetextanchor='start' 
     ))
 
     # Add negative bars (red/pink)
     fig.add_trace(go.Bar(
-        x=expense.index,
-        y=expense.values,
+        x=month_labels,
+        y=-cash_flow["expenses"],
         marker_color='rgba(255, 182, 193, 0.9)',
         hovertemplate='Expenses: %{y:$,.0f}<extra></extra>',
         name='Expenses',
         textposition='inside',
-        text = expense.values,
+        text = cash_flow["expenses"],
         texttemplate='$%{text:,.0f}',
         insidetextanchor='start' 
     ))
 
     # Add solid line for savings
     fig.add_trace(go.Scatter(
-        x=savings.index, 
-        y=savings.values,
+        x=month_labels, 
+        y=cash_flow["savings"],
         mode='lines+markers',
         name='Savings',
         line=dict(color='blue', width=2, dash='dash'),
@@ -441,4 +492,3 @@ def _render_cash_flow(df):
         marker=dict(cornerradius=10),
     )
     st.plotly_chart(fig, config={"responsive": True})
-

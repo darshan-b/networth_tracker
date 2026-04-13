@@ -10,11 +10,12 @@ from urllib.parse import quote
 
 from app_constants import ColumnNames
 from data.calculations import (
-    classify_transaction_type,
-    is_expense_transaction,
+    build_transaction_type_mask,
+    calculate_transaction_summary_metrics,
     is_income_transaction,
     is_refund_transaction,
 )
+from data.expense_intelligence import get_duplicate_transactions, get_recurring_merchants
 from ui.components.surfaces import (
     inject_surface_styles,
     render_metric_card,
@@ -59,6 +60,7 @@ def render_transactions_tab(df):
         "A quick read on the filtered expense, income, and net savings mix.",
     )
     _render_transaction_summary(df_filtered)
+    _render_transaction_investigation(df_filtered)
 
     render_section_intro(
         "Transaction List",
@@ -99,6 +101,8 @@ def _apply_transaction_filters(df):
     """
     if 'filter_reset_counter' not in st.session_state:
         st.session_state.filter_reset_counter = 0
+
+    all_transaction_types = ["Expense", "Refund/Credit", "Income"]
     
     # First row: Type, Account, Search
     col1, col2, col3 = st.columns([1.2, 2, 2])
@@ -106,8 +110,8 @@ def _apply_transaction_filters(df):
     with col1:
         type_filter = st.multiselect(
             "Type",
-            options=["Expense", "Refund/Credit", "Income"],
-            default=["Expense", "Refund/Credit", "Income"],
+            options=all_transaction_types,
+            default=all_transaction_types,
             help="Filter by transaction type",
             key=f"type_filter_{st.session_state.filter_reset_counter}",
         )
@@ -133,15 +137,8 @@ def _apply_transaction_filters(df):
     
     # Filter by type/account first for cascading
     df_temp = df.copy()
-    if type_filter and len(type_filter) < 3:
-        mask = pd.Series(False, index=df_temp.index)
-        if "Expense" in type_filter:
-            mask = mask | is_expense_transaction(df_temp)
-        if "Refund/Credit" in type_filter:
-            mask = mask | is_refund_transaction(df_temp)
-        if "Income" in type_filter:
-            mask = mask | is_income_transaction(df_temp)
-        df_temp = df_temp[mask]
+    if type_filter and len(type_filter) < len(all_transaction_types):
+        df_temp = df_temp[build_transaction_type_mask(df_temp, type_filter)]
 
     df_temp = df_temp[df_temp[ColumnNames.ACCOUNT].isin(account_filter)] if account_filter else df_temp
 
@@ -191,15 +188,8 @@ def _apply_transaction_filters(df):
     # Apply all filters
     df_filtered = df.copy()
 
-    if type_filter and len(type_filter) < 3:
-        mask = pd.Series(False, index=df_filtered.index)
-        if "Expense" in type_filter:
-            mask = mask | is_expense_transaction(df_filtered)
-        if "Refund/Credit" in type_filter:
-            mask = mask | is_refund_transaction(df_filtered)
-        if "Income" in type_filter:
-            mask = mask | is_income_transaction(df_filtered)
-        df_filtered = df_filtered[mask]
+    if type_filter and len(type_filter) < len(all_transaction_types):
+        df_filtered = df_filtered[build_transaction_type_mask(df_filtered, type_filter)]
 
     df_filtered = df_filtered[
         (df_filtered[ColumnNames.ACCOUNT].isin(account_filter)) &
@@ -233,12 +223,9 @@ def _apply_transaction_filters(df):
 
 def _build_export_dataframe(df_filtered: pd.DataFrame) -> pd.DataFrame:
     """Prepare a clean export of the currently filtered transaction set."""
-    export_df = df_filtered.sort_values(ColumnNames.DATE, ascending=False).copy()
-    export_df["Type"] = export_df.apply(classify_transaction_type, axis=1)
-    export_df["Display Amount"] = export_df.apply(
-        lambda row: abs(row[ColumnNames.AMOUNT]) if classify_transaction_type(row) != "Income" else row[ColumnNames.AMOUNT],
-        axis=1,
-    )
+    export_df = _add_transaction_display_columns(df_filtered.sort_values(ColumnNames.DATE, ascending=False).copy())
+    export_df["Type"] = export_df["type"]
+    export_df["Display Amount"] = export_df["display_amount"]
     return export_df
 
 
@@ -249,16 +236,7 @@ def _render_transaction_table(df_filtered):
     Args:
         df_filtered (pd.DataFrame): Filtered transactions dataframe
     """
-    df_display = df_filtered.sort_values(ColumnNames.DATE, ascending=False).copy()
-    
-    # Create display amount column
-    df_display['display_amount'] = df_display.apply(
-        lambda row: abs(row[ColumnNames.AMOUNT]) if classify_transaction_type(row) != 'Income' else row[ColumnNames.AMOUNT], 
-        axis=1
-    )
-    
-    # Add transaction type indicator
-    df_display['type'] = df_display.apply(classify_transaction_type, axis=1)
+    df_display = _add_transaction_display_columns(df_filtered.sort_values(ColumnNames.DATE, ascending=False).copy())
     
     st.dataframe(
         df_display[[ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, 'display_amount']],
@@ -308,25 +286,13 @@ def _render_transaction_summary(df_filtered):
     col1, col2, col3 = st.columns(3)
     
     # Calculate metrics
-    expenses_filtered = df_filtered[is_expense_transaction(df_filtered)]
-    refunds_filtered = df_filtered[is_refund_transaction(df_filtered)]
-    expenses_total = abs(expenses_filtered[ColumnNames.AMOUNT].sum()) - refunds_filtered[ColumnNames.AMOUNT].sum()
-    expenses_total = max(expenses_total, 0.0)
-    expenses_count = len(expenses_filtered)
-    
-    income_filtered = df_filtered[is_income_transaction(df_filtered)]
-    income_total = income_filtered[ColumnNames.AMOUNT].sum()
-    income_count = len(income_filtered)
-    refund_total = refunds_filtered[ColumnNames.AMOUNT].sum()
-    refund_count = len(refunds_filtered)
-    
-    net_total = df_filtered[ColumnNames.AMOUNT].sum()
+    summary = calculate_transaction_summary_metrics(df_filtered)
     
     with col1:
         render_metric_card(
             "Net Expenses",
-            f"${expenses_total:,.0f}",
-            f"{expenses_count} transactions",
+            f"${summary['net_expenses']:,.0f}",
+            f"{summary['expense_count']} transactions",
             "Expense outflows after refunds and credits reduce the total.",
             "negative",
         )
@@ -334,27 +300,70 @@ def _render_transaction_summary(df_filtered):
     with col2:
         render_metric_card(
             "Refunds / Credits",
-            f"${refund_total:,.0f}",
-            f"{refund_count} transactions",
+            f"${summary['refund_total']:,.0f}",
+            f"{summary['refund_count']} transactions",
             "Positive non-income transactions that offset spending.",
-            "positive" if refund_total > 0 else "neutral",
+            "positive" if summary['refund_total'] > 0 else "neutral",
         )
     
     with col3:
         render_metric_card(
             "Net Cash Flow",
-            f"${net_total:,.0f}",
-            f"${income_total:,.0f} income",
+            f"${summary['net_cash_flow']:,.0f}",
+            f"${summary['income_total']:,.0f} income",
             "All signed transactions summed across the filtered set.",
-            "positive" if net_total > 0 else "negative" if net_total < 0 else "neutral",
+            "positive" if summary['net_cash_flow'] > 0 else "negative" if summary['net_cash_flow'] < 0 else "neutral",
+        )
+
+
+def _render_transaction_investigation(df_filtered: pd.DataFrame) -> None:
+    """Surface recurring-merchant and duplicate-charge clues."""
+    recurring = get_recurring_merchants(df_filtered)
+    duplicates = get_duplicate_transactions(df_filtered)
+    if not recurring and not duplicates:
+        return
+
+    render_section_intro(
+        "Investigation",
+        "Scan for recurring merchants and possible duplicate charges before reviewing raw rows.",
+    )
+
+    if recurring:
+        st.markdown("#### Recurring Merchants")
+        recurring_df = pd.DataFrame(recurring)
+        st.dataframe(
+            recurring_df,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "merchant": st.column_config.TextColumn("Merchant", width="medium"),
+                "months_seen": st.column_config.NumberColumn("Months", width="small"),
+                "average_amount": st.column_config.NumberColumn("Average", format="$%.2f", width="small"),
+                "latest_amount": st.column_config.NumberColumn("Latest", format="$%.2f", width="small"),
+            },
+        )
+
+    if duplicates:
+        st.markdown("#### Potential Duplicates")
+        duplicate_df = pd.DataFrame(duplicates)
+        st.dataframe(
+            duplicate_df,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "merchant": st.column_config.TextColumn("Merchant", width="medium"),
+                "date": st.column_config.TextColumn("Date", width="small"),
+                "account": st.column_config.TextColumn("Account", width="medium"),
+                "amount": st.column_config.NumberColumn("Amount", format="$%.2f", width="small"),
+                "duplicates": st.column_config.NumberColumn("Count", width="small"),
+            },
         )
 
 
 def _render_pivot_table(df_display):
-    # Add transaction type indicator
-    df_display['type'] = df_display.apply(classify_transaction_type, axis=1)
-    
-    df_for_pivot = df_display[[ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, ColumnNames.AMOUNT]].copy()
+    df_for_pivot = _add_transaction_display_columns(df_display.copy())[
+        [ColumnNames.DATE, 'type', ColumnNames.MERCHANT, ColumnNames.CATEGORY, ColumnNames.SUBCATEGORY, ColumnNames.ACCOUNT, ColumnNames.AMOUNT]
+    ].copy()
 
     # Convert date to string to avoid UTC conversion
     df_for_pivot[ColumnNames.DATE] = df_for_pivot[ColumnNames.DATE].dt.strftime('%Y-%m-%d')
@@ -431,3 +440,16 @@ def _render_pivot_table(df_display):
 
     # Display
     st.iframe(f"data:text/html;charset=utf-8,{quote(html_code)}", height=500)
+
+
+def _add_transaction_display_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add vectorized type and amount display fields for transaction views."""
+    income_mask = is_income_transaction(df)
+    refund_mask = is_refund_transaction(df)
+
+    df["type"] = "Expense"
+    df.loc[refund_mask, "type"] = "Refund/Credit"
+    df.loc[income_mask, "type"] = "Income"
+    df["display_amount"] = df[ColumnNames.AMOUNT].abs()
+    df.loc[income_mask, "display_amount"] = df.loc[income_mask, ColumnNames.AMOUNT]
+    return df
