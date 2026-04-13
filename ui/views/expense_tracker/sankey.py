@@ -8,7 +8,7 @@ import pandas as pd
 import json
 from urllib.parse import quote
 from app_constants import ColumnNames
-from data.calculations import calculate_expense_summary
+from data.calculations import calculate_expense_summary, _net_outflow
 from ui.views.expense_tracker.overview import _render_summary_metrics
 from ui.components.surfaces import (
     inject_surface_styles,
@@ -35,6 +35,60 @@ CATEGORY_COLORS = {
 
 
 DEFAULT_COLOR = '#94a3b8'
+
+
+def _format_currency(amount: float) -> str:
+    """Format a numeric amount for chart labels."""
+    return f"${amount:,.2f}"
+
+
+def _build_display_name(name: str, amount: float, percent: float | None = None) -> str:
+    """Build the full node label shown in tooltips and detailed labels."""
+    value_text = _format_currency(amount)
+    if percent is None:
+        return f"{name}<br/>{value_text}"
+    return f"{name}<br/>{value_text} ({percent:.1f}%)"
+
+
+def _build_subcategory_label(name: str, percent: float, show_percent: bool) -> str:
+    """Build the compact on-canvas label for a subcategory."""
+    if not show_percent:
+        return name
+    return f"{name}<br/>({percent:.1f}%)"
+
+
+def _append_node(
+    nodes: list,
+    node_map: dict,
+    name: str,
+    display_name: str,
+    color: str,
+    node_idx: int,
+    column: int,
+    order: int,
+    label_text: str | None = None,
+    level: int | None = None,
+    percent: float | None = None,
+    parent_percent: float | None = None,
+    parent_name: str | None = None,
+    aggregated: bool = False,
+) -> int:
+    """Append a node with stable layout metadata for deterministic Sankey ordering."""
+    nodes.append({
+        "name": name,
+        "displayName": display_name,
+        "labelText": label_text or display_name,
+        "level": level if level is not None else column,
+        "percent": percent,
+        "parentPercent": parent_percent,
+        "parentName": parent_name,
+        "aggregated": aggregated,
+        "color": color,
+        "column": column,
+        "sortOrder": order,
+    })
+    node_map[name] = node_idx
+    return node_idx + 1
 
 
 def render_sankey_tab(df, budgets, num_months):
@@ -100,7 +154,6 @@ def _generate_sankey_data(df):
     expense_df = df[df[ColumnNames.CATEGORY] != 'Income']
 
     total_income = income_df[ColumnNames.AMOUNT].sum()
-    total_expenses = abs(expense_df[ColumnNames.AMOUNT].sum())
 
     # === Income Sources ===
     income_sources = {}
@@ -119,28 +172,39 @@ def _generate_sankey_data(df):
             income_sources[category] = cat_df[ColumnNames.AMOUNT].sum()
 
     # Add income source nodes
-    for name, amount in sorted(income_sources.items(), key=lambda x: x[1], reverse=True):
+    sorted_income_sources = sorted(income_sources.items(), key=lambda x: x[1], reverse=True)
+
+    for order, (name, amount) in enumerate(sorted_income_sources):
         pct = (amount / total_income * 100) if total_income > 0 else 0
-        nodes.append({
-            "name": name,
-            "displayName": f"{name}<br/>${amount:,.2f} ({pct:.1f}%)",
-            "color": CATEGORY_COLORS.get('Total', '#3b82f6')
-        })
-        node_map[name] = node_idx
-        node_idx += 1
+        node_idx = _append_node(
+            nodes,
+            node_map,
+            name,
+            _build_display_name(name, amount, pct),
+            CATEGORY_COLORS.get('Total', '#3b82f6'),
+            node_idx,
+            column=0,
+            order=order,
+            level=0,
+            percent=pct,
+        )
 
     # Total Income node
     total_income_idx = node_idx
-    nodes.append({
-        "name": "Total Income",
-        "displayName": f"Total Income<br/>${total_income:,.2f}",
-        "color": CATEGORY_COLORS['Total']
-    })
-    node_map['Total Income'] = node_idx
-    node_idx += 1
+    node_idx = _append_node(
+        nodes,
+        node_map,
+        "Total Income",
+        _build_display_name("Total Income", total_income),
+        CATEGORY_COLORS['Total'],
+        node_idx,
+        column=1,
+        order=0,
+        level=1,
+    )
 
     # Links: Income sources → Total Income
-    for name, amount in income_sources.items():
+    for name, amount in sorted_income_sources:
         links.append({
             "source": node_map[name],
             "target": total_income_idx,
@@ -150,27 +214,38 @@ def _generate_sankey_data(df):
     # === Expenses by Category ===
     category_totals = (
         expense_df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
-        .apply(lambda x: abs(x.sum()))
+        .sum()
+        .pipe(_net_outflow)
+    )
+    category_totals = (
+        category_totals[category_totals > 0]
         .sort_values(ascending=False)
     )
+    total_expenses = category_totals.sum()
 
-    for category, amount in category_totals.items():
+    for order, (category, amount) in enumerate(category_totals.items()):
         pct = (amount / total_expenses * 100) if total_expenses > 0 else 0
-        nodes.append({
-            "name": category,
-            "displayName": f"{category}<br/>${amount:,.2f} ({pct:.1f}%)",
-            "color": CATEGORY_COLORS.get(category, DEFAULT_COLOR)
-        })
-        node_map[category] = node_idx
+        node_idx = _append_node(
+            nodes,
+            node_map,
+            category,
+            _build_display_name(category, amount, pct),
+            CATEGORY_COLORS.get(category, DEFAULT_COLOR),
+            node_idx,
+            column=2,
+            order=order,
+            label_text=_build_display_name(category, amount, pct),
+            level=2,
+            percent=pct,
+        )
         links.append({
             "source": total_income_idx,
-            "target": node_idx,
+            "target": node_map[category],
             "value": float(amount)
         })
-        node_idx += 1
 
     # === Subcategories (as end nodes) ===
-    for category in category_totals.index:
+    for category_order, category in enumerate(category_totals.index):
         node_idx = _add_subcategory_nodes(
             expense_df,
             category,
@@ -178,29 +253,36 @@ def _generate_sankey_data(df):
             node_map,
             nodes,
             links,
-            node_idx
+            node_idx,
+            category_order,
         )
 
-    # === Savings (Remaining) as End Node ===
+    # === Savings (Remaining) as a direct branch ===
     remaining = total_income - total_expenses
     if remaining > 0:
         pct = (remaining / total_income * 100)
-        nodes.append({
-            "name": "Savings",
-            "displayName": f"Savings<br/>${remaining:,.2f} ({pct:.1f}%)",
-            "color": CATEGORY_COLORS.get('Savings', 'blue')
-        })
+        node_idx = _append_node(
+            nodes,
+            node_map,
+            "Savings",
+            _build_display_name("Savings", remaining, pct),
+            CATEGORY_COLORS.get('Savings', 'blue'),
+            node_idx,
+            column=2,
+            order=len(category_totals),
+            level=2,
+            percent=pct,
+        )
         links.append({
             "source": total_income_idx,
-            "target": node_idx,
+            "target": node_map["Savings"],
             "value": float(remaining)
         })
-        node_idx += 1
 
     return {"nodes": nodes, "links": links}
 
 
-def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx):
+def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links, node_idx, category_order):
     """
     Add subcategory nodes and links for a given category.
     
@@ -227,25 +309,51 @@ def _add_subcategory_nodes(df, category, category_total, node_map, nodes, links,
     
     subcategory_totals = (
         subcategory_df.groupby(ColumnNames.SUBCATEGORY)[ColumnNames.AMOUNT]
-        .apply(lambda x: abs(x.sum()))
+        .sum()
+        .pipe(_net_outflow)
+    )
+    subcategory_totals = (
+        subcategory_totals[subcategory_totals > 0]
         .sort_values(ascending=False)
     )
+
+    if subcategory_totals.empty:
+        return node_idx
+
+    total_expenses = (
+        df.groupby(ColumnNames.CATEGORY)[ColumnNames.AMOUNT]
+        .sum()
+        .pipe(_net_outflow)
+        .sum()
+    )
+    category_percent = (category_total / total_expenses * 100) if total_expenses > 0 else 0
     
-    for subcategory, amount in subcategory_totals.items():
+    show_subcategory_pct = len(subcategory_totals) > 1
+
+    for subcategory_order, (subcategory, amount) in enumerate(subcategory_totals.items()):
         pct = (amount / category_total * 100) if category_total > 0 else 0
-        
-        nodes.append({
-            "name": subcategory,
-            "displayName": f"{subcategory}<br/>${amount:,.2f} ({pct:.1f}%)",
-            "color": CATEGORY_COLORS.get(category, DEFAULT_COLOR)
-        })
+        subcategory_label = _build_subcategory_label(subcategory, pct, show_subcategory_pct)
+        node_idx = _append_node(
+            nodes,
+            node_map,
+            f"{category}::{subcategory}",
+            _build_display_name(subcategory, amount, pct),
+            CATEGORY_COLORS.get(category, DEFAULT_COLOR),
+            node_idx,
+            column=3,
+            order=(category_order * 1000) + subcategory_order,
+            label_text=subcategory_label,
+            level=3,
+            percent=pct,
+            parent_percent=category_percent,
+            parent_name=category,
+        )
         
         links.append({
             "source": node_map[category],
-            "target": node_idx,
+            "target": node_map[f"{category}::{subcategory}"],
             "value": float(amount)
         })
-        node_idx += 1
     
     return node_idx
 
@@ -262,8 +370,6 @@ def _render_sankey_diagram(data: dict) -> None:
     Raises:
         ValueError: If data structure is invalid
     """
-    import json
-    
     # Validate input data
     if not isinstance(data, dict):
         raise ValueError("Data must be a dictionary")
@@ -283,6 +389,10 @@ def _render_sankey_diagram(data: dict) -> None:
         for field in required_fields:
             if field not in link:
                 raise ValueError(f"Link at index {i} missing '{field}' field")
+
+    node_count = len(data["nodes"])
+    chart_height = max(1000, min(2200, 320 + (node_count * 38)))
+    iframe_height = chart_height + 240
     
     html_content = f"""
         <!DOCTYPE html>
@@ -300,14 +410,15 @@ def _render_sankey_diagram(data: dict) -> None:
                     margin: 0;
                     padding: 20px;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
                     min-height: 100vh;
                 }}
                 .container {{
-                    background: white;
-                    border-radius: 16px;
+                    background: rgba(255, 255, 255, 0.96);
+                    border-radius: 20px;
                     padding: 32px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(148, 163, 184, 0.18);
+                    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
                     max-width: 1800px;
                     margin: 0 auto;
                 }}
@@ -328,111 +439,213 @@ def _render_sankey_diagram(data: dict) -> None:
                     font-weight: 700;
                     margin-bottom: 8px;
                     color: #1a1a1a;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: linear-gradient(135deg, #2563eb 0%, #0f766e 100%);
                     -webkit-background-clip: text;
                     -webkit-text-fill-color: transparent;
                     background-clip: text;
                 }}
                 .subtitle {{
                     font-size: 14px;
-                    color: #666;
+                    color: #64748b;
                     margin-bottom: 12px;
                 }}
                 .controls {{
                     display: flex;
-                    gap: 12px;
+                    gap: 10px;
                     flex-wrap: wrap;
                     align-items: center;
                 }}
+                .control-group {{
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 7px 11px;
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.78);
+                    border: 1px solid rgba(148, 163, 184, 0.16);
+                    color: #475569;
+                    font-size: 12px;
+                    font-weight: 600;
+                    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset;
+                }}
+                .control-group input[type="range"] {{
+                    width: 108px;
+                    accent-color: #2563eb;
+                }}
+                .control-group input[type="checkbox"] {{
+                    accent-color: #2563eb;
+                }}
+                .control-value {{
+                    min-width: 32px;
+                    text-align: right;
+                    color: #2563eb;
+                    font-variant-numeric: tabular-nums;
+                }}
 
                 .btn {{
-                    padding: 10px 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 9px 18px;
+                    background: linear-gradient(135deg, #2563eb 0%, #0f766e 100%);
                     color: white;
                     border: none;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
+                    border-radius: 999px;
+                    font-size: 13px;
+                    font-weight: 600;
                     cursor: pointer;
                     transition: transform 0.2s, box-shadow 0.2s;
                 }}
                 .btn:hover {{
                     transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
                 }}
                 .btn:active {{
                     transform: translateY(0);
                 }}
                 .btn-secondary {{
-                    background: white;
-                    color: #667eea;
-                    border: 2px solid #667eea;
+                    background: rgba(255, 255, 255, 0.9);
+                    color: #2563eb;
+                    border: 1px solid rgba(37, 99, 235, 0.18);
                 }}
                 .btn-secondary:hover {{
-                    background: #f9fafb;
+                    background: #f8fbff;
                 }}
                 #chart {{ 
-                    background: white;
+                    background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%);
                     width: 100%;
                     height: auto;
-                    border-radius: 8px;
+                    border-radius: 16px;
                 }}
                 .chart-wrapper {{
                     position: relative;
                     overflow: hidden;
-                    border-radius: 8px;
-                    border: 1px solid #e5e7eb;
+                    border-radius: 16px;
+                    border: 1px solid rgba(226, 232, 240, 0.95);
+                    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
                 }}
                 .node rect {{
                     stroke: #fff;
-                    stroke-width: 2px;
+                    stroke-width: 1.5px;
                     cursor: pointer;
                     transition: opacity 0.2s ease, stroke-width 0.2s ease;
                 }}
                 .node rect:hover {{ 
-                    opacity: 0.85;
+                    opacity: 0.9;
                 }}
                 .node.selected rect {{
-                    stroke-width: 4px;
-                    stroke: #333;
+                    stroke-width: 3px;
+                    stroke: rgba(15, 23, 42, 0.8);
                 }}
                 .node.dimmed {{
-                    filter: blur(1.5px);
+                    filter: blur(0.6px);
                 }}
                 .node.dimmed rect {{
-                    opacity: 0.3;
+                    opacity: 0.24;
                 }}
                 .node.dimmed foreignObject {{
-                    filter: blur(1.5px);
-                    opacity: 0.3;
+                    filter: blur(0.6px);
+                    opacity: 0.28;
                 }}
                 .link {{
                     fill: none;
-                    stroke-opacity: 0.3;
+                    stroke-opacity: 0.22;
                     transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
-                    mix-blend-mode: multiply;
                     cursor: pointer;
                 }}
                 .link:hover {{ 
-                    stroke-opacity: 0.5;
+                    stroke-opacity: 0.36;
                 }}
                 .link.highlighted {{
-                    stroke-opacity: 0.85;
-                    mix-blend-mode: normal;
+                    stroke-opacity: 0.82;
                 }}
                 .link.dimmed {{
-                    stroke-opacity: 0.15;
-                    filter: blur(3px);
+                    stroke-opacity: 0.07;
+                    filter: blur(0.5px);
                 }}
                 .node-label {{
-                    font-size: 13px;
-                    font-weight: 500;
+                    font-size: 12px;
+                    font-weight: 600;
                     pointer-events: none;
-                    line-height: 1.4;
+                    line-height: 1.35;
+                    color: #243244;
                     transition: font-weight 0.2s ease;
                 }}
                 .node.highlighted .node-label {{
                     font-weight: 700;
+                }}
+                .node-label-shell {{
+                    display: inline-flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    max-width: 100%;
+                    padding: 6px 10px;
+                    border-radius: 12px;
+                    background: rgba(255, 255, 255, 0.74);
+                    border: 1px solid rgba(148, 163, 184, 0.14);
+                    box-shadow:
+                        0 6px 18px rgba(15, 23, 42, 0.06),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+                    backdrop-filter: blur(8px);
+                }}
+                .node.highlighted .node-label-shell {{
+                    background: rgba(255, 255, 255, 0.88);
+                    border-color: rgba(37, 99, 235, 0.18);
+                }}
+                .node-label-primary {{
+                    font-size: 12.5px;
+                    font-weight: 700;
+                    color: #1e293b;
+                    letter-spacing: -0.01em;
+                }}
+                .node-label-secondary {{
+                    font-size: 10.5px;
+                    font-weight: 600;
+                    color: #64748b;
+                    letter-spacing: 0.01em;
+                }}
+                .node-label-content {{
+                    display: -webkit-box;
+                    overflow: hidden;
+                    -webkit-box-orient: vertical;
+                    -webkit-line-clamp: 2;
+                    white-space: normal;
+                    word-break: break-word;
+                    text-wrap: balance;
+                }}
+                .tooltip {{
+                    position: absolute;
+                    z-index: 20;
+                    max-width: 260px;
+                    padding: 8px 10px;
+                    border-radius: 10px;
+                    background: rgba(15, 23, 42, 0.92);
+                    color: #f8fafc;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+                    pointer-events: none;
+                    opacity: 0;
+                    transform: translateY(4px);
+                    transition: opacity 0.15s ease, transform 0.15s ease;
+                }}
+                .tooltip.visible {{
+                    opacity: 1;
+                    transform: translateY(0);
+                }}
+                .column-header {{
+                    font-size: 13px;
+                    font-weight: 700;
+                    letter-spacing: 0.04em;
+                    fill: #334155;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                }}
+                .column-header-chip {{
+                    fill: rgba(255, 255, 255, 0.88);
+                    stroke: rgba(148, 163, 184, 0.22);
+                    stroke-width: 1;
+                }}
+                .column-header-rule {{
+                    stroke: rgba(37, 99, 235, 0.14);
+                    stroke-width: 2;
+                    stroke-linecap: round;
                 }}
                 @keyframes fadeIn {{
                     from {{ opacity: 0; transform: translateY(10px); }}
@@ -467,6 +680,15 @@ def _render_sankey_diagram(data: dict) -> None:
                         <div class="subtitle">Interactive Sankey Diagram • Click nodes/links to highlight • Use mouse wheel to zoom</div>
                     </div>
                     <div class="controls">
+                        <label class="control-group" for="label-threshold">
+                            <span>Detail Threshold</span>
+                            <input id="label-threshold" type="range" min="0" max="10" step="1" value="5">
+                            <span id="label-threshold-value" class="control-value">5%</span>
+                        </label>
+                        <label class="control-group" for="compact-mode">
+                            <input id="compact-mode" type="checkbox">
+                            <span>Compact Mode</span>
+                        </label>
                         <button class="btn" onclick="resetView()">Reset View</button>
                         <button class="btn btn-secondary" onclick="exportPNG()">Save as PNG</button>
                     </div>
@@ -474,11 +696,12 @@ def _render_sankey_diagram(data: dict) -> None:
                 
                 <div class="chart-wrapper">
                     <svg id="chart"></svg>
+                    <div id="tooltip" class="tooltip"></div>
                 </div>
             </div>
             
             <script>
-                const data = {json.dumps(data)};
+                const baseData = {json.dumps(data)};
                 
                 // Color scheme
                 const colorPalette = [
@@ -490,6 +713,11 @@ def _render_sankey_diagram(data: dict) -> None:
                 let selectedNode = null;
                 let selectedLink = null;
                 let currentTransform = d3.zoomIdentity;
+                let zoom = null;
+                let currentGraph = null;
+                let labelThreshold = 5;
+                let compactMode = false;
+                let currentChartWidth = getResponsiveWidth();
                 
                 function getResponsiveWidth() {{
                     const containerWidth = document.querySelector('.container').clientWidth - 64;
@@ -498,14 +726,424 @@ def _render_sankey_diagram(data: dict) -> None:
                     return Math.min(maxWidth, Math.max(minWidth, containerWidth));
                 }}
                 
-                const width = getResponsiveWidth();
-                const height = 1000;
+                const height = {chart_height};
+                const nodeCount = baseData.nodes.length;
+                const baseNodePadding = Math.max(32, Math.min(68, Math.round((height - 120) / Math.max(nodeCount + 2, 1) * 0.62)));
+                const chartWrapper = document.querySelector('.chart-wrapper');
+                const tooltip = document.getElementById('tooltip');
+                const thresholdInput = document.getElementById('label-threshold');
+                const thresholdValue = document.getElementById('label-threshold-value');
+                const compactModeToggle = document.getElementById('compact-mode');
+
+                function formatTooltipContent(text) {{
+                    return String(text).replaceAll('<br/>', '<br>').replaceAll('<br>', '<br>');
+                }}
+
+                function escapeHtml(text) {{
+                    return String(text)
+                        .replaceAll('&', '&amp;')
+                        .replaceAll('<', '&lt;')
+                        .replaceAll('>', '&gt;')
+                        .replaceAll('"', '&quot;')
+                        .replaceAll("'", '&#39;');
+                }}
+
+                function getPrimaryLabel(node) {{
+                    if (node.labelText) {{
+                        return String(node.labelText).split('<br/>')[0];
+                    }}
+                    if (node.displayName) {{
+                        return String(node.displayName).split('<br/>')[0];
+                    }}
+                    return node.name || '';
+                }}
+
+                function getRenderedLabel(node) {{
+                    if (node.aggregated) {{
+                        return node.displayName || node.labelText || node.name || '';
+                    }}
+                    const percent = typeof node.percent === 'number' ? node.percent : null;
+                    const parentPercent = typeof node.parentPercent === 'number' ? node.parentPercent : null;
+                    if (node.level === 2 && percent !== null && percent < labelThreshold) {{
+                        return getPrimaryLabel(node);
+                    }}
+                    if (node.level === 3) {{
+                        if (parentPercent !== null && parentPercent < labelThreshold) {{
+                            return getPrimaryLabel(node);
+                        }}
+                        if (percent !== null && percent < labelThreshold) {{
+                            return getPrimaryLabel(node);
+                        }}
+                    }}
+                    return node.labelText || node.displayName || node.name || '';
+                }}
+
+                function makeDisplayName(name, value, percent = null) {{
+                    const valueText = '$' + value.toLocaleString(undefined, {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
+                    return percent === null
+                        ? `${{name}}<br/>${{valueText}}`
+                        : `${{name}}<br/>${{valueText}} (${{percent.toFixed(1)}}%)`;
+                }}
+
+                function findBaseNodeByName(name) {{
+                    return baseData.nodes.find(node => node.name === name) || null;
+                }}
+
+                function getIncomingValue(incomingByTarget, node) {{
+                    const nodeIndex = baseData.nodes.indexOf(node);
+                    const incoming = incomingByTarget.get(nodeIndex) || [];
+                    return incoming.reduce((sum, link) => sum + link.value, 0);
+                }}
+
+                function createAggregatedNode(name, displayName, level, percent, color, column, sortOrder, extras = {{}}) {{
+                    return {{
+                        name,
+                        displayName,
+                        labelText: displayName,
+                        level,
+                        percent,
+                        color,
+                        column,
+                        sortOrder,
+                        aggregated: true,
+                        ...extras,
+                    }};
+                }}
+
+                function buildCompactData() {{
+                    const nodeByIndex = new Map(baseData.nodes.map((node, index) => [index, node]));
+                    const incomingByTarget = new Map();
+                    const compactDefaultColor = '#94a3b8';
+
+                    baseData.links.forEach((link) => {{
+                        if (!incomingByTarget.has(link.target)) {{
+                            incomingByTarget.set(link.target, []);
+                        }}
+                        incomingByTarget.get(link.target).push(link);
+                    }});
+
+                    const nodes = [];
+                    const links = [];
+                    const nodeIndexByName = new Map();
+                    const linkIndexByPair = new Map();
+
+                    function addNode(node) {{
+                        if (nodeIndexByName.has(node.name)) {{
+                            return nodeIndexByName.get(node.name);
+                        }}
+                        const clonedNode = {{ ...node, index: nodes.length }};
+                        nodes.push(clonedNode);
+                        nodeIndexByName.set(clonedNode.name, clonedNode.index);
+                        return clonedNode.index;
+                    }}
+
+                    function addLink(sourceName, targetName, value) {{
+                        if (!value || value <= 0) {{
+                            return;
+                        }}
+                        const source = nodeIndexByName.get(sourceName);
+                        const target = nodeIndexByName.get(targetName);
+                        if (source === undefined || target === undefined) {{
+                            return;
+                        }}
+                        const linkKey = `${{source}}->${{target}}`;
+                        if (linkIndexByPair.has(linkKey)) {{
+                            links[linkIndexByPair.get(linkKey)].value += value;
+                            return;
+                        }}
+                        linkIndexByPair.set(linkKey, links.length);
+                        links.push({{ source, target, value }});
+                    }}
+
+                    baseData.nodes
+                        .filter(node => node.level === 0 || node.level === 1)
+                        .forEach(node => addNode(node));
+
+                    const smallCategories = baseData.nodes.filter(node =>
+                        node.level === 2 &&
+                        node.name !== 'Savings' &&
+                        typeof node.percent === 'number' &&
+                        node.percent < labelThreshold
+                    );
+                    const smallCategoryNames = new Set(smallCategories.map(node => node.name));
+                    const otherCategoriesValue = smallCategories.reduce((sum, node) => sum + getIncomingValue(incomingByTarget, node), 0);
+                    const otherCategoriesPct = smallCategories.reduce((sum, node) => sum + (node.percent || 0), 0);
+
+                    baseData.nodes
+                        .filter(node => node.level === 2 && !smallCategoryNames.has(node.name))
+                        .forEach(node => addNode(node));
+
+                    if (otherCategoriesValue > 0) {{
+                        addNode(createAggregatedNode(
+                            'Other Categories',
+                            makeDisplayName('Other Categories', otherCategoriesValue, otherCategoriesPct),
+                            2,
+                            otherCategoriesPct,
+                            compactDefaultColor,
+                            2,
+                            9998,
+                        ));
+                    }}
+
+                    const groupedSubcategoryValues = new Map();
+                    const groupedSubcategoryPercents = new Map();
+
+                    baseData.nodes
+                        .filter(node => node.level === 3)
+                        .forEach((node) => {{
+                            const parentName = node.parentName;
+                            if (!parentName || smallCategoryNames.has(parentName)) {{
+                                return;
+                            }}
+                            const shouldGroup = typeof node.percent === 'number' && node.percent < labelThreshold;
+                            if (!shouldGroup) {{
+                                addNode(node);
+                                return;
+                            }}
+
+                            const value = getIncomingValue(incomingByTarget, node);
+                            const key = parentName;
+                            groupedSubcategoryValues.set(key, (groupedSubcategoryValues.get(key) || 0) + value);
+                            groupedSubcategoryPercents.set(key, (groupedSubcategoryPercents.get(key) || 0) + (node.percent || 0));
+                        }});
+
+                    groupedSubcategoryValues.forEach((value, parentName) => {{
+                        const percent = groupedSubcategoryPercents.get(parentName) || null;
+                        const parentNode = findBaseNodeByName(parentName);
+                        addNode(createAggregatedNode(
+                            `${{parentName}}::Other`,
+                            makeDisplayName('Other', value, percent),
+                            3,
+                            percent,
+                            parentNode?.color || compactDefaultColor,
+                            3,
+                            9999,
+                            {{
+                                parentPercent: parentNode?.percent ?? null,
+                                parentName,
+                            }}
+                        ));
+                    }});
+
+                    baseData.links.forEach((link) => {{
+                        const sourceNode = nodeByIndex.get(link.source);
+                        const targetNode = nodeByIndex.get(link.target);
+                        if (!sourceNode || !targetNode) {{
+                            return;
+                        }}
+
+                        if (sourceNode.level === 0 && targetNode.level === 1) {{
+                            addLink(sourceNode.name, targetNode.name, link.value);
+                            return;
+                        }}
+
+                        if (sourceNode.level === 1 && targetNode.level === 2) {{
+                            const targetName = smallCategoryNames.has(targetNode.name) ? 'Other Categories' : targetNode.name;
+                            addLink(sourceNode.name, targetName, link.value);
+                            return;
+                        }}
+
+                        if (sourceNode.level === 2 && targetNode.level === 3) {{
+                            if (smallCategoryNames.has(sourceNode.name)) {{
+                                return;
+                            }}
+                            const targetName = (typeof targetNode.percent === 'number' && targetNode.percent < labelThreshold)
+                                ? `${{sourceNode.name}}::Other`
+                                : targetNode.name;
+                            addLink(sourceNode.name, targetName, link.value);
+                        }}
+                    }});
+
+                    return {{ nodes, links }};
+                }}
+
+                function getDisplayData() {{
+                    if (!compactMode) {{
+                        return {{
+                            nodes: baseData.nodes.map((node) => ({{ ...node }})),
+                            links: baseData.links.map((link) => ({{ ...link }})),
+                        }};
+                    }}
+                    return buildCompactData();
+                }}
+
+                function getExportStyleText() {{
+                    return `
+                        .node rect {{
+                            stroke: #fff;
+                            stroke-width: 2px;
+                        }}
+                        .link {{
+                            fill: none;
+                            stroke-opacity: 0.3;
+                        }}
+                        .node-label {{
+                            font-size: 15px;
+                            font-weight: 500;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                        }}
+                        .node-label-shell {{
+                            display: inline-flex;
+                            flex-direction: column;
+                            gap: 2px;
+                            max-width: 100%;
+                            padding: 6px 10px;
+                            border-radius: 12px;
+                            background: rgba(255, 255, 255, 0.86);
+                            border: 1px solid rgba(148, 163, 184, 0.18);
+                            box-shadow:
+                                0 6px 18px rgba(15, 23, 42, 0.06),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.82);
+                        }}
+                        .node-label-content {{
+                            display: -webkit-box;
+                            overflow: hidden;
+                            -webkit-box-orient: vertical;
+                            -webkit-line-clamp: 2;
+                            white-space: normal;
+                            word-break: break-word;
+                        }}
+                        .node-label-primary {{
+                            font-size: 15px;
+                            font-weight: 700;
+                            color: #1e293b;
+                            letter-spacing: -0.01em;
+                        }}
+                        .node-label-secondary {{
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #64748b;
+                            letter-spacing: 0.01em;
+                        }}
+                        .column-header {{
+                            font-size: 15px;
+                            font-weight: 700;
+                            letter-spacing: 0.04em;
+                            fill: #334155;
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                        }}
+                        .column-header-chip {{
+                            fill: rgba(255, 255, 255, 0.88);
+                            stroke: rgba(148, 163, 184, 0.22);
+                            stroke-width: 1;
+                        }}
+                        .column-header-rule {{
+                            stroke: rgba(37, 99, 235, 0.14);
+                            stroke-width: 2;
+                            stroke-linecap: round;
+                        }}
+                    `;
+                }}
+
+                function cloneExportTextLayers(exportSvg, exportMainGroup, exportScaleX) {{
+                    const svgNs = 'http://www.w3.org/2000/svg';
+                    const exportHeaderLayer = document.createElementNS(svgNs, 'g');
+                    exportHeaderLayer.setAttribute('class', 'export-column-headers');
+                    const exportLabelLayer = document.createElementNS(svgNs, 'g');
+                    exportLabelLayer.setAttribute('class', 'export-labels');
+
+                    exportMainGroup.querySelectorAll('.nodes g').forEach((nodeGroup) => {{
+                        const rect = nodeGroup.querySelector('rect');
+                        const label = nodeGroup.querySelector('foreignObject');
+                        if (!rect || !label) {{
+                            return;
+                        }}
+
+                        const rectX = Number(rect.getAttribute('x') || 0);
+                        const rectWidth = Number(rect.getAttribute('width') || 0);
+                        const scaledRectX = rectX * exportScaleX;
+                        const scaledRectWidth = rectWidth * exportScaleX;
+
+                        const labelX = Number(label.getAttribute('x') || 0);
+                        const labelY = Number(label.getAttribute('y') || 0);
+                        const labelWidth = Number(label.getAttribute('width') || 0);
+                        const labelHeight = Number(label.getAttribute('height') || 0);
+                        const isRightSideLabel = labelX < rectX;
+                        const newLabelX = isRightSideLabel
+                            ? scaledRectX - labelWidth - 10
+                            : scaledRectX + scaledRectWidth + 10;
+
+                        const exportLabel = document.createElementNS(svgNs, 'foreignObject');
+                        exportLabel.setAttribute('x', String(newLabelX));
+                        exportLabel.setAttribute('y', String(labelY));
+                        exportLabel.setAttribute('width', String(labelWidth));
+                        exportLabel.setAttribute('height', String(labelHeight));
+                        exportLabel.setAttribute('pointer-events', 'none');
+
+                        if (label.firstElementChild) {{
+                            exportLabel.appendChild(label.firstElementChild.cloneNode(true));
+                        }}
+
+                        exportLabelLayer.appendChild(exportLabel);
+                        label.setAttribute('display', 'none');
+                    }});
+
+                    exportMainGroup.querySelectorAll('.column-headers g').forEach((headerGroup) => {{
+                        const transform = headerGroup.getAttribute('transform') || '';
+                        const match = transform.match(/translate\(([-0-9.]+),\s*([-0-9.]+)\)/);
+                        if (!match) {{
+                            return;
+                        }}
+
+                        const x = Number(match[1]);
+                        const y = Number(match[2]);
+                        const exportHeader = document.createElementNS(svgNs, 'g');
+                        exportHeader.setAttribute('transform', `translate(${{x * exportScaleX}}, ${{y}})`);
+
+                        headerGroup.childNodes.forEach((child) => {{
+                            exportHeader.appendChild(child.cloneNode(true));
+                        }});
+
+                        exportHeaderLayer.appendChild(exportHeader);
+                        headerGroup.setAttribute('display', 'none');
+                    }});
+
+                    exportSvg.appendChild(exportHeaderLayer);
+                    exportSvg.appendChild(exportLabelLayer);
+                }}
+
+                function formatLabelHtml(rawLabel) {{
+                    const parts = String(rawLabel || '').split(/<br\\s*\\/?>/i);
+                    const primary = escapeHtml(parts[0] || '');
+                    const secondaryRaw = parts.slice(1).join(' ').trim();
+                    const secondary = secondaryRaw ? escapeHtml(secondaryRaw) : '';
+                    return '<div class="node-label-shell"><div class="node-label-content"><div class="node-label-primary">' +
+                        primary +
+                        '</div>' +
+                        (secondary ? '<div class="node-label-secondary">' + secondary + '</div>' : '') +
+                        '</div></div>';
+                }}
+
+                function showTooltip(event, content) {{
+                    const wrapperRect = chartWrapper.getBoundingClientRect();
+                    tooltip.innerHTML = formatTooltipContent(content);
+                    tooltip.classList.add('visible');
+
+                    const tooltipWidth = tooltip.offsetWidth || 180;
+                    const tooltipHeight = tooltip.offsetHeight || 48;
+                    const left = Math.min(
+                        wrapperRect.width - tooltipWidth - 16,
+                        Math.max(16, event.clientX - wrapperRect.left + 12)
+                    );
+                    const top = Math.min(
+                        wrapperRect.height - tooltipHeight - 16,
+                        Math.max(16, event.clientY - wrapperRect.top - tooltipHeight - 10)
+                    );
+
+                    tooltip.style.left = `${{left}}px`;
+                    tooltip.style.top = `${{top}}px`;
+                }}
+
+                function hideTooltip() {{
+                    tooltip.classList.remove('visible');
+                }}
                 
                 function resetView() {{
                     selectedNode = null;
                     selectedLink = null;
                     d3.selectAll('.link').classed("highlighted", false).classed("dimmed", false);
                     d3.selectAll('.node').classed("selected", false).classed("dimmed", false).classed("highlighted", false);
+                    hideTooltip();
                     
                     // Reset zoom
                     d3.select("#chart")
@@ -521,33 +1159,49 @@ def _render_sankey_diagram(data: dict) -> None:
                     // Get the bounding box of actual content
                     const bbox = mainGroup.getBBox();
                     const padding = 40;
+                    const exportAspectWidth = Math.max((bbox.height + padding * 2) * 1.5, currentChartWidth);
+                    const exportWidth = Math.max(exportAspectWidth, bbox.width + padding * 2);
+                    const exportHeight = bbox.height + padding * 2;
+                    const exportScaleX = exportWidth / currentChartWidth;
+                    const exportY = bbox.y - padding;
                     
                     // Clone SVG and prepare for export
                     const exportSvg = svgElement.cloneNode(true);
+                    const exportMainGroup = exportSvg.querySelector('.main');
                     
                     // Inline all CSS styles
                     const styleElement = document.createElement('style');
-                    styleElement.textContent = `
-                        .node rect {{
-                            stroke: #fff;
-                            stroke-width: 2px;
-                        }}
-                        .link {{
-                            fill: none;
-                            stroke-opacity: 0.3;
-                        }}
-                        .node-label {{
-                            font-size: 13px;
-                            font-weight: 500;
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-                        }}
-                    `;
+                    styleElement.textContent = getExportStyleText();
                     exportSvg.insertBefore(styleElement, exportSvg.firstChild);
+
+                    if (exportMainGroup) {{
+                        const existingTransform = exportMainGroup.getAttribute('transform') || '';
+                        exportMainGroup.setAttribute('transform', `${{existingTransform}} scale(${{exportScaleX}}, 1)`.trim());
+
+                        if (currentGraph) {{
+                            exportMainGroup.querySelectorAll('.links path').forEach((path, index) => {{
+                                const linkDatum = currentGraph.links[index];
+                                if (!linkDatum) {{
+                                    return;
+                                }}
+                                const exportStroke = linkDatum.target?.color || linkDatum.source?.color || '#999';
+                                path.setAttribute('stroke', exportStroke);
+                            }});
+                        }}
+                        cloneExportTextLayers(exportSvg, exportMainGroup, exportScaleX);
+
+                        exportSvg.querySelectorAll('linearGradient').forEach((gradient) => {{
+                            const x1 = Number(gradient.getAttribute('x1') || 0);
+                            const x2 = Number(gradient.getAttribute('x2') || 0);
+                            gradient.setAttribute('x1', String(x1 * exportScaleX));
+                            gradient.setAttribute('x2', String(x2 * exportScaleX));
+                        }});
+                    }}
                     
                     // Set proper dimensions
-                    exportSvg.setAttribute('width', bbox.width + padding * 2);
-                    exportSvg.setAttribute('height', bbox.height + padding * 2);
-                    exportSvg.setAttribute('viewBox', `${{bbox.x - padding}} ${{bbox.y - padding}} ${{bbox.width + padding * 2}} ${{bbox.height + padding * 2}}`);
+                    exportSvg.setAttribute('width', exportWidth);
+                    exportSvg.setAttribute('height', exportHeight);
+                    exportSvg.setAttribute('viewBox', `0 ${{exportY}} ${{exportWidth}} ${{exportHeight}}`);
                     exportSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                     exportSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
                     
@@ -556,8 +1210,8 @@ def _render_sankey_diagram(data: dict) -> None:
                     // Create canvas
                     const canvas = document.createElement('canvas');
                     const scale = 2; // Higher resolution
-                    canvas.width = (bbox.width + padding * 2) * scale;
-                    canvas.height = (bbox.height + padding * 2) * scale;
+                    canvas.width = exportWidth * scale;
+                    canvas.height = exportHeight * scale;
                     const ctx = canvas.getContext('2d');
                     ctx.scale(scale, scale);
                     
@@ -569,7 +1223,7 @@ def _render_sankey_diagram(data: dict) -> None:
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         
                         // Draw SVG
-                        ctx.drawImage(img, 0, 0, bbox.width + padding * 2, bbox.height + padding * 2);
+                        ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
                         
                         // Download
                         canvas.toBlob(function(blob) {{
@@ -592,6 +1246,8 @@ def _render_sankey_diagram(data: dict) -> None:
                 function renderSankey() {{
                     d3.select("#chart").selectAll("*").remove();
                     
+                    const data = getDisplayData();
+
                     // Assign colors to nodes without colors
                     const colorScale = d3.scaleOrdinal()
                         .domain(data.nodes.map((d, i) => d.category || i))
@@ -602,7 +1258,16 @@ def _render_sankey_diagram(data: dict) -> None:
                             node.color = colorScale(node.category || i);
                         }}
                         node.index = i;
+                        node.column = node.column ?? 0;
+                        node.sortOrder = node.sortOrder ?? i;
+                        node.level = node.level ?? node.column ?? 0;
                     }});
+
+                    const width = getResponsiveWidth();
+                    currentChartWidth = width;
+                    const nodePadding = baseNodePadding;
+                    const labelWidth = 190;
+                    const labelHeight = 58;
                     
                     const svg = d3.select("#chart")
                         .attr("width", width)
@@ -614,7 +1279,7 @@ def _render_sankey_diagram(data: dict) -> None:
                         .attr("class", "main");
                     
                     // Add zoom behavior
-                    const zoom = d3.zoom()
+                    zoom = d3.zoom()
                         .scaleExtent([0.5, 3])
                         .on("zoom", (event) => {{
                             currentTransform = event.transform;
@@ -622,7 +1287,6 @@ def _render_sankey_diagram(data: dict) -> None:
                         }});
                     
                     svg.call(zoom);
-                    window.zoom = zoom; // Make zoom accessible globally
                     
                     // Click on background to deselect
                     svg.on("click", function(event) {{
@@ -639,14 +1303,94 @@ def _render_sankey_diagram(data: dict) -> None:
                     const sankey = d3.sankey()
                         .nodeId(d => d.index)
                         .nodeWidth(40)
-                        .nodePadding(50)
-                        .nodeAlign(d3.sankeyJustify)
-                        .nodeSort((a, b) => a.y0 - b.y0)
-                        .linkSort((a, b) => a.source.y0 - b.source.y0)
+                        .nodePadding(nodePadding)
+                        .nodeAlign((node, totalColumns) => {{
+                            const explicitColumn = node.column;
+                            if (Number.isFinite(explicitColumn)) {{
+                                return Math.max(0, Math.min(totalColumns - 1, explicitColumn));
+                            }}
+                            return d3.sankeyJustify(node, totalColumns);
+                        }})
+                        .nodeSort((a, b) => {{
+                            const columnDelta = (a.column || 0) - (b.column || 0);
+                            if (columnDelta !== 0) {{
+                                return columnDelta;
+                            }}
+                            return (a.sortOrder || 0) - (b.sortOrder || 0);
+                        }})
+                        .linkSort((a, b) => {{
+                            const sourceOrderDelta = (a.source.sortOrder || 0) - (b.source.sortOrder || 0);
+                            if (sourceOrderDelta !== 0) {{
+                                return sourceOrderDelta;
+                            }}
+                            return (a.target.sortOrder || 0) - (b.target.sortOrder || 0);
+                        }})
                         .iterations(50)
                         .extent([[50, 50], [width - 50, height - 50]]);
                     
                     const graph = sankey(data);
+                    currentGraph = graph;
+
+                    const columnTitles = {{
+                        0: "Income Sources",
+                        1: "Income",
+                        2: "Categories",
+                        3: "Subcategories",
+                    }};
+                    const columns = [...new Set(graph.nodes.map(n => n.column))].sort((a, b) => a - b);
+                    const headerData = columns.map(column => {{
+                        const nodesInColumn = graph.nodes.filter(node => node.column === column);
+                        if (!nodesInColumn.length) {{
+                            return null;
+                        }}
+                        return {{
+                            column,
+                            title: columnTitles[column] || `Column ${{column + 1}}`,
+                            x: d3.mean(nodesInColumn, node => (node.x0 + node.x1) / 2),
+                        }};
+                    }}).filter(Boolean);
+
+                    const headerGroup = g.append("g")
+                        .attr("class", "column-headers");
+
+                    const headerEnter = headerGroup.selectAll("g")
+                        .data(headerData)
+                        .join("g")
+                        .attr("transform", d => `translate(${{d.x}}, 24)`);
+
+                    headerEnter.append("line")
+                        .attr("class", "column-header-rule")
+                        .attr("y1", -18)
+                        .attr("y2", -18);
+
+                    headerEnter.append("rect")
+                        .attr("class", "column-header-chip")
+                        .attr("y", -12)
+                        .attr("height", 24)
+                        .attr("rx", 12)
+                        .attr("ry", 12);
+
+                    headerEnter.append("text")
+                        .attr("class", "column-header")
+                        .attr("text-anchor", "middle")
+                        .attr("dominant-baseline", "middle")
+                        .text(d => d.title);
+
+                    headerEnter.each(function() {{
+                        const headerNode = d3.select(this);
+                        const textNode = headerNode.select("text").node();
+                        const textWidth = textNode ? textNode.getComputedTextLength() : 72;
+                        const chipWidth = Math.max(88, Math.ceil(textWidth + 28));
+                        const halfChipWidth = chipWidth / 2;
+
+                        headerNode.select("rect")
+                            .attr("x", -halfChipWidth)
+                            .attr("width", chipWidth);
+
+                        headerNode.select("line")
+                            .attr("x1", -(halfChipWidth - 10))
+                            .attr("x2", halfChipWidth - 10);
+                    }});
                     
                     // Create links
                     const link = g.append("g")
@@ -676,6 +1420,14 @@ def _render_sankey_diagram(data: dict) -> None:
                         }})
                         .attr("stroke-width", d => Math.max(2, d.width))
                         .style("animation-delay", (d, i) => (i * 0.02) + "s")
+                        .on("mousemove", function(event, d) {{
+                            showTooltip(
+                                event,
+                                d.source.name + " -> " + d.target.name + "<br>$" +
+                                d.value.toLocaleString(undefined, {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }})
+                            );
+                        }})
+                        .on("mouseleave", hideTooltip)
                         .on("click", function(event, d) {{
                             event.stopPropagation();
                             
@@ -741,6 +1493,10 @@ def _render_sankey_diagram(data: dict) -> None:
                         .attr("role", "button")
                         .attr("tabindex", 0)
                         .attr("aria-label", d => d.name)
+                        .on("mousemove", function(event, d) {{
+                            showTooltip(event, d.displayName || d.name);
+                        }})
+                        .on("mouseleave", hideTooltip)
                         .on("click", function(event, d) {{
                             event.stopPropagation();
                             
@@ -774,26 +1530,37 @@ def _render_sankey_diagram(data: dict) -> None:
                         }});
                     
                     node.append("foreignObject")
-                        .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - 210)
-                        .attr("y", d => (d.y1 + d.y0) / 2 - 15)
-                        .attr("width", 200)
-                        .attr("height", 50)
+                        .attr("x", d => d.x0 < width / 2 ? d.x1 + 10 : d.x0 - labelWidth - 10)
+                        .attr("y", d => (d.y1 + d.y0) / 2 - (labelHeight / 2))
+                        .attr("width", labelWidth)
+                        .attr("height", labelHeight)
                         .attr("pointer-events", "none")
                         .append("xhtml:div")
                         .attr("class", "node-label")
                         .style("text-align", d => d.x0 < width / 2 ? "left" : "right")
-                        .html(d => '<div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + (d.displayName || d.name) + '</div>');
+                        .html(d => formatLabelHtml(getRenderedLabel(d)));
                 }}
                 
                 // Render the diagram
                 renderSankey();
+
+                thresholdInput.addEventListener('input', (event) => {{
+                    labelThreshold = Number(event.target.value);
+                    thresholdValue.textContent = labelThreshold + '%';
+                    renderSankey();
+                }});
+
+                compactModeToggle.addEventListener('change', (event) => {{
+                    compactMode = event.target.checked;
+                    renderSankey();
+                }});
                 
                 // Handle window resize
                 let resizeTimer;
                 window.addEventListener('resize', () => {{
                     clearTimeout(resizeTimer);
                     resizeTimer = setTimeout(() => {{
-                        location.reload();
+                        renderSankey();
                     }}, 500);
                 }});
             </script>
@@ -801,4 +1568,4 @@ def _render_sankey_diagram(data: dict) -> None:
         </html>
         """
     
-    st.iframe(f"data:text/html;charset=utf-8,{quote(html_content)}", height=1400)
+    st.iframe(f"data:text/html;charset=utf-8,{quote(html_content)}", height=iframe_height)
