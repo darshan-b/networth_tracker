@@ -512,11 +512,12 @@ def create_allocation_chart(latest_df):
     """Create asset allocation pie chart from historical data."""
     allocation = latest_df[latest_df['Current Value'] > 0].copy()
     allocation = allocation.sort_values('Current Value', ascending=False)
+    label_column = 'Position' if 'Position' in allocation.columns else 'ticker'
     
     fig = px.pie(
         allocation,
         values='Current Value',
-        names='ticker',
+        names=label_column,
         title='Asset Allocation by Current Value',
         hole=0.4
     )
@@ -530,13 +531,14 @@ def create_gain_loss_chart(latest_df):
     """Create gain/loss bar chart by symbol from historical data."""
     data = latest_df[latest_df['quantity'] > 0].copy()
     data = data.sort_values('Total Gain/Loss')
+    label_column = 'Position' if 'Position' in data.columns else 'ticker'
     
     colors = ['red' if x < 0 else 'green' for x in data['Total Gain/Loss']]
     
     fig = go.Figure()
     
     fig.add_trace(go.Bar(
-        x=data['ticker'],
+        x=data[label_column],
         y=data['Total Gain/Loss'],
         marker_color=colors,
         text=data['Total Gain/Loss'].apply(lambda x: f'${x:,.2f}'),
@@ -545,7 +547,7 @@ def create_gain_loss_chart(latest_df):
     
     fig.update_layout(
         title='Gain/Loss by Symbol',
-        xaxis_title='ticker',
+        xaxis_title=label_column,
         yaxis_title='Gain/Loss ($)',
         template='plotly_white',
         height=400
@@ -558,7 +560,12 @@ def create_performance_comparison(df, symbols):
     fig = go.Figure()
     
     for symbol in symbols:
-        symbol_data = df[df['ticker'] == symbol].sort_values('Date')
+        symbol_data = (
+            df[df['ticker'] == symbol]
+            .groupby('Date', as_index=False)['Last Close']
+            .mean()
+            .sort_values('Date')
+        )
         if len(symbol_data) > 0:
             normalized = (symbol_data['Last Close'] / symbol_data['Last Close'].iloc[0]) * 100
             
@@ -582,7 +589,11 @@ def create_performance_comparison(df, symbols):
 
 def create_correlation_heatmap(df):
     """Create correlation heatmap for portfolio symbols."""
-    price_pivot = df.pivot_table(
+    deduped = (
+        df.groupby(['Date', 'ticker'], as_index=False)['Last Close']
+        .mean()
+    )
+    price_pivot = deduped.pivot_table(
         index='Date',
         columns='ticker',
         values='Last Close'

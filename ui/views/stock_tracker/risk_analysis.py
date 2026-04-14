@@ -8,8 +8,27 @@ from typing import List
 import streamlit as st
 import pandas as pd
 
+from config import ChartConfig
 from data.calculations import aggregate_portfolio_daily
 from ui.charts import create_drawdown_chart, create_correlation_heatmap
+from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
+
+
+def _aggregate_symbol_history(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Aggregate one clean daily symbol series across brokerages/accounts."""
+    symbol_data = df[df['ticker'] == symbol].copy()
+    if symbol_data.empty:
+        return symbol_data
+
+    return (
+        symbol_data.groupby('Date', as_index=False)
+        .agg({
+            'Last Close': 'mean',
+            'Current Value': 'sum',
+        })
+        .sort_values('Date')
+        .reset_index(drop=True)
+    )
 
 
 def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
@@ -20,7 +39,11 @@ def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
         selected_symbols: List of symbols to analyze
     """
     try:
-        st.header("Risk Analysis")
+        inject_surface_styles()
+        render_section_intro(
+            "Risk Analysis",
+            "Measure volatility, drawdown, correlation, and beta using daily symbol series that remain stable when the same ticker appears in multiple brokerages.",
+        )
         
         if historical_df.empty:
             st.warning("No historical data available for selected filters.")
@@ -37,15 +60,24 @@ def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Portfolio Drawdown")
+            render_section_intro(
+                "Portfolio Drawdown",
+                "Track how far the filtered portfolio fell from prior peaks during the selected period.",
+            )
             _render_drawdown_analysis(historical_df)
         
         with col2:
-            st.subheader("Asset Correlation")
+            render_section_intro(
+                "Asset Correlation",
+                "Spot symbols that move together and identify where diversification is thin.",
+            )
             _render_correlation_analysis(historical_df, selected_symbols)
         
         # Display risk breakdown table
-        st.subheader("Risk Metrics by Symbol")
+        render_section_intro(
+            "Risk Metrics by Symbol",
+            "Compare volatility, downside, drawdown, and beta at the symbol level.",
+        )
         _render_risk_table(historical_df, selected_symbols)
         
     except Exception as e:
@@ -113,7 +145,7 @@ def _render_drawdown_analysis(df: pd.DataFrame) -> None:
             return
         
         fig = create_drawdown_chart(portfolio_daily)
-        st.plotly_chart(fig, config={"responsive": True})
+        st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
         
         # Calculate drawdown statistics
         cumulative = portfolio_daily['Current Value'] / portfolio_daily['Current Value'].iloc[0]
@@ -145,7 +177,7 @@ def _render_correlation_analysis(df: pd.DataFrame, symbols: List[str]) -> None:
             return
         
         fig = create_correlation_heatmap(df)
-        st.plotly_chart(fig, config={"responsive": True})
+        st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
         
         st.caption(
             "**Correlation Matrix:** Shows how assets move together. "
@@ -168,13 +200,22 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
     risk_data = []
     
     for symbol in symbols:
-        symbol_data = df[df['ticker'] == symbol].sort_values('Date')
+        symbol_data = _aggregate_symbol_history(df, symbol)
         
+        if len(symbol_data) < 2:
+            continue
+
+        symbol_data['Date'] = pd.to_datetime(symbol_data['Date'], errors='coerce')
+        symbol_data = symbol_data.dropna(subset=['Date'])
         if len(symbol_data) < 2:
             continue
         
         # Calculate metrics
-        returns = symbol_data['Last Close'].pct_change().dropna()
+        returns = (
+            symbol_data.set_index('Date')['Last Close']
+            .pct_change()
+            .dropna()
+        )
         
         if len(returns) == 0:
             continue
@@ -195,17 +236,22 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
         
         # Beta (relative to equal-weighted portfolio)
         portfolio_returns = (
-            df.groupby('Date')['Current Value']
+            df.assign(Date=pd.to_datetime(df['Date'], errors='coerce'))
+            .dropna(subset=['Date'])
+            .groupby('Date')['Current Value']
             .sum()
             .pct_change()
             .dropna()
         )
         
         # Align dates for beta calculation
-        aligned_returns = pd.DataFrame({
-            'symbol': returns,
-            'portfolio': portfolio_returns
-        }).dropna()
+        aligned_returns = pd.concat(
+            [
+                returns.rename('symbol'),
+                portfolio_returns.rename('portfolio'),
+            ],
+            axis=1,
+        ).dropna()
         
         if len(aligned_returns) > 0:
             covariance = aligned_returns['symbol'].cov(aligned_returns['portfolio'])
@@ -251,4 +297,10 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
         "**Downside Deviation:** Volatility of negative returns only.\n\n"
         "**Beta:** Sensitivity to portfolio movements. >1 = more volatile than portfolio."
     )
-
+    render_accent_pills(
+        [
+            ("Symbols", str(len(risk_df))),
+            ("Highest Beta", f"{risk_df['Beta'].max():.2f}"),
+            ("Deepest Drawdown", f"{risk_df['Max Drawdown %'].min():.2f}%"),
+        ]
+    )

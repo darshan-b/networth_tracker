@@ -6,7 +6,18 @@ This module provides cost basis analysis and breakdown by symbol.
 import streamlit as st
 import pandas as pd
 
+from config import ChartConfig
 from ui.charts import create_cost_basis_comparison
+from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
+
+
+def _build_position_key(df: pd.DataFrame) -> pd.Series:
+    """Build a stable position key to avoid collapsing same-ticker holdings."""
+    return (
+        df['Brokerage'].astype(str)
+        + '||' + df['Account Name'].astype(str)
+        + '||' + df['ticker'].astype(str)
+    )
 
 
 def render(historical_df: pd.DataFrame) -> None:
@@ -16,7 +27,11 @@ def render(historical_df: pd.DataFrame) -> None:
         historical_df: Historical tracking DataFrame (already filtered)
     """
     try:
-        st.header("Cost Basis Analysis")
+        inject_surface_styles()
+        render_section_intro(
+            "Cost Basis Analysis",
+            "Compare current value to remaining cost basis with position-aware breakdowns that keep same-ticker holdings separate.",
+        )
         
         if historical_df.empty:
             st.info(
@@ -26,15 +41,24 @@ def render(historical_df: pd.DataFrame) -> None:
             return
         
         # Display cost basis comparison chart
-        st.subheader("Portfolio Cost Basis vs Current Value")
+        render_section_intro(
+            "Cost Basis vs Value",
+            "Track how aggregate portfolio value and cost basis moved across the selected period.",
+        )
         _render_cost_basis_chart(historical_df)
         
         # Display cost basis breakdown
-        st.subheader("Cost Basis Breakdown by Symbol")
+        render_section_intro(
+            "Position Breakdown",
+            "Inspect remaining basis, current value, and gain/loss at the active-position level.",
+        )
         _render_cost_basis_breakdown(historical_df)
         
         # Display cost basis metrics
-        st.subheader("Cost Basis Metrics")
+        render_section_intro(
+            "Cost Basis Metrics",
+            "Summarize total capital at work and the split between profitable and loss-making positions.",
+        )
         _render_cost_basis_metrics(historical_df)
         
     except Exception as e:
@@ -52,7 +76,7 @@ def _render_cost_basis_chart(df: pd.DataFrame) -> None:
     try:
         fig = create_cost_basis_comparison(df)
         if fig:
-            st.plotly_chart(fig, config={"responsive": True})
+            st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
         else:
             st.warning("Unable to create cost basis comparison chart.")
     except Exception as e:
@@ -65,11 +89,17 @@ def _render_cost_basis_breakdown(df: pd.DataFrame) -> None:
     Args:
         df: Historical DataFrame
     """
-    # Get latest data for each symbol
+    latest_historical = df.copy()
+    latest_historical['position_key'] = _build_position_key(latest_historical)
+    latest_historical['Position'] = (
+        latest_historical['ticker'].astype(str)
+        + ' | ' + latest_historical['Brokerage'].astype(str)
+        + ' | ' + latest_historical['Account Name'].astype(str)
+    )
     latest_historical = (
-        df
+        latest_historical
         .sort_values('Date')
-        .groupby('ticker')
+        .groupby('position_key')
         .last()
         .reset_index()
     )
@@ -80,7 +110,7 @@ def _render_cost_basis_breakdown(df: pd.DataFrame) -> None:
     
     # Select relevant columns
     cost_breakdown = latest_historical[[
-        'ticker', 
+        'Position',
         'Cost Basis', 
         'Current Value', 
         'Total Gain/Loss', 
@@ -88,7 +118,7 @@ def _render_cost_basis_breakdown(df: pd.DataFrame) -> None:
     ]].copy()
     
     cost_breakdown.columns = [
-        'ticker', 
+        'Position',
         'Cost Basis', 
         'Current Value', 
         'Gain/Loss ($)', 
@@ -124,7 +154,9 @@ def _render_cost_basis_metrics(df: pd.DataFrame) -> None:
         df: Historical DataFrame
     """
     # Get latest data
-    latest = df.sort_values('Date').groupby('ticker').last().reset_index()
+    latest = df.copy()
+    latest['position_key'] = _build_position_key(latest)
+    latest = latest.sort_values('Date').groupby('position_key').last().reset_index()
     
     # Calculate totals
     total_cost = latest['Cost Basis'].sum()
@@ -188,3 +220,11 @@ def _render_cost_basis_metrics(df: pd.DataFrame) -> None:
         else:
             st.info("No loss-making positions")
 
+    render_accent_pills(
+        [
+            ("Positions", str(len(latest))),
+            ("Winners", str(len(winners))),
+            ("Losers", str(len(losers))),
+            ("Accounts", str(latest['Account Name'].nunique()) if 'Account Name' in latest.columns else "N/A"),
+        ]
+    )

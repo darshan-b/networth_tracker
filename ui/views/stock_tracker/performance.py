@@ -8,7 +8,27 @@ from typing import List
 import streamlit as st
 import pandas as pd
 
+from config import ChartConfig
 from ui.charts import create_performance_comparison
+from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
+
+
+def _aggregate_symbol_history(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    """Aggregate one clean daily series per symbol across brokerages/accounts."""
+    symbol_data = df[df['ticker'] == symbol].sort_values('Date').copy()
+    if symbol_data.empty:
+        return symbol_data
+
+    return (
+        symbol_data.groupby('Date', as_index=False)
+        .agg({
+            'Last Close': 'mean',
+            'Current Value': 'sum',
+            'Cost Basis': 'sum',
+        })
+        .sort_values('Date')
+        .reset_index(drop=True)
+    )
 
 
 def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
@@ -19,7 +39,11 @@ def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
         selected_symbols: List of symbols to analyze
     """
     try:
-        st.header("Performance Analysis")
+        inject_surface_styles()
+        render_section_intro(
+            "Performance Analysis",
+            "Compare symbol-level price moves and value growth across the filtered portfolio without cross-broker duplicate-date distortion.",
+        )
         
         if historical_df.empty:
             st.warning("No historical data available for selected filters.")
@@ -30,15 +54,24 @@ def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
             return
         
         # Display performance comparison chart
-        st.subheader("Normalized Performance Comparison")
+        render_section_intro(
+            "Normalized Comparison",
+            "All series are rebased to 100 at the start of the selected window so relative price performance is directly comparable.",
+        )
         _render_performance_chart(historical_df, selected_symbols)
         
         # Display individual performance metrics
-        st.subheader("Individual Stock Performance")
+        render_section_intro(
+            "Symbol Performance",
+            "Review start/end prices, value growth, total return, and realized volatility by symbol.",
+        )
         _render_performance_table(historical_df, selected_symbols)
         
         # Display performance statistics
-        st.subheader("Performance Statistics")
+        render_section_intro(
+            "Performance Statistics",
+            "Use daily return statistics to compare consistency, downside, and risk-adjusted behavior across symbols.",
+        )
         _render_performance_statistics(historical_df, selected_symbols)
         
     except Exception as e:
@@ -60,7 +93,7 @@ def _render_performance_chart(df: pd.DataFrame, symbols: List[str]) -> None:
             return
         
         fig = create_performance_comparison(df, symbols)
-        st.plotly_chart(fig, config={"responsive": True})
+        st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
         
         st.caption(
             "**Note:** All values are normalized to 100 at the start of the period "
@@ -80,7 +113,7 @@ def _render_performance_table(df: pd.DataFrame, symbols: List[str]) -> None:
     perf_data = []
     
     for symbol in symbols:
-        symbol_data = df[df['ticker'] == symbol].sort_values('Date')
+        symbol_data = _aggregate_symbol_history(df, symbol)
         
         if len(symbol_data) < 2:
             continue
@@ -147,7 +180,7 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
     stats = []
     
     for symbol in symbols:
-        symbol_data = df[df['ticker'] == symbol].sort_values('Date')
+        symbol_data = _aggregate_symbol_history(df, symbol)
         
         if len(symbol_data) < 2:
             continue
@@ -199,4 +232,10 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
         "**Sharpe Ratio:** Higher is better. Measures risk-adjusted returns. "
         "Simplified calculation assumes risk-free rate = 0."
     )
-
+    render_accent_pills(
+        [
+            ("Symbols", str(len(stats_df))),
+            ("Best Sharpe", f"{stats_df['Sharpe Ratio'].max():.3f}"),
+            ("Highest Vol", f"{stats_df['Std Dev %'].max():.3f}%"),
+        ]
+    )

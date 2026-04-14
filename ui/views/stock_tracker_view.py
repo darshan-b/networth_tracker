@@ -12,8 +12,9 @@ import streamlit as st
 
 from config import StockTrackerConfig
 from app_constants import StockColumnNames
-from ui.components.utils import render_tabs_safely
+from ui.components.utils import render_empty_state, render_tabs_safely
 from ui.components.filters import render_stock_header_filters, render_stock_sidebar_filters
+from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
 from ui.views.stock_tracker import (
     allocation,
     cost_basis,
@@ -22,6 +23,21 @@ from ui.views.stock_tracker import (
     risk_analysis,
     transactions,
 )
+
+
+def _normalize_key_series(series: pd.Series) -> pd.Series:
+    """Normalize label fields so filters and joins survive spacing/case drift."""
+    return series.fillna('').astype(str).str.strip().str.casefold()
+
+
+
+def _build_position_key(df: pd.DataFrame) -> pd.Series:
+    """Build a stable brokerage/account/ticker key for position-level analysis."""
+    return (
+        _normalize_key_series(df[StockColumnNames.BROKERAGE])
+        + "||" + _normalize_key_series(df[StockColumnNames.ACCOUNT_NAME])
+        + "||" + _normalize_key_series(df[StockColumnNames.TICKER])
+    )
 
 
 def _filter_by_header_selections(
@@ -37,13 +53,16 @@ def _filter_by_header_selections(
     conditions = []
 
     if selected_brokerages and StockColumnNames.BROKERAGE in df.columns:
-        conditions.append(df[StockColumnNames.BROKERAGE].isin(selected_brokerages))
+        selected = {_normalize_key_series(pd.Series(selected_brokerages)).iloc[i] for i in range(len(selected_brokerages))}
+        conditions.append(_normalize_key_series(df[StockColumnNames.BROKERAGE]).isin(selected))
 
     if selected_accounts and StockColumnNames.ACCOUNT_NAME in df.columns:
-        conditions.append(df[StockColumnNames.ACCOUNT_NAME].isin(selected_accounts))
+        selected = {_normalize_key_series(pd.Series(selected_accounts)).iloc[i] for i in range(len(selected_accounts))}
+        conditions.append(_normalize_key_series(df[StockColumnNames.ACCOUNT_NAME]).isin(selected))
 
     if selected_types and StockColumnNames.INVESTMENT_TYPE in df.columns:
-        conditions.append(df[StockColumnNames.INVESTMENT_TYPE].isin(selected_types))
+        selected = {_normalize_key_series(pd.Series(selected_types)).iloc[i] for i in range(len(selected_types))}
+        conditions.append(_normalize_key_series(df[StockColumnNames.INVESTMENT_TYPE]).isin(selected))
 
     if conditions:
         mask = conditions[0]
@@ -78,15 +97,19 @@ def _get_filtered_symbols(historical_df: pd.DataFrame) -> List[str]:
         StockColumnNames.DATE,
         StockColumnNames.TICKER,
         StockColumnNames.QUANTITY,
+        StockColumnNames.BROKERAGE,
+        StockColumnNames.ACCOUNT_NAME,
     ]
     if any(col not in historical_df.columns for col in required_columns):
         return []
 
     try:
+        latest_data = historical_df.copy()
+        latest_data["_position_key"] = _build_position_key(latest_data)
         latest_data = (
-            historical_df
+            latest_data
             .sort_values(StockColumnNames.DATE)
-            .groupby(StockColumnNames.TICKER)
+            .groupby("_position_key")
             .last()
             .reset_index()
         )
@@ -98,11 +121,90 @@ def _get_filtered_symbols(historical_df: pd.DataFrame) -> List[str]:
         return []
 
 
+def _get_position_count(historical_df: pd.DataFrame) -> int:
+    """Get currently owned position count from historical data."""
+    required_columns = [
+        StockColumnNames.DATE,
+        StockColumnNames.TICKER,
+        StockColumnNames.QUANTITY,
+        StockColumnNames.BROKERAGE,
+        StockColumnNames.ACCOUNT_NAME,
+    ]
+    if any(col not in historical_df.columns for col in required_columns):
+        return 0
+
+    try:
+        latest_data = historical_df.copy()
+        latest_data["_position_key"] = _build_position_key(latest_data)
+        latest_data = (
+            latest_data
+            .sort_values(StockColumnNames.DATE)
+            .groupby("_position_key")
+            .last()
+            .reset_index()
+        )
+        return int((latest_data[StockColumnNames.QUANTITY] > 0).sum())
+    except Exception:
+        return 0
+
+
+def _get_active_position_keys(historical_df: pd.DataFrame) -> list[str]:
+    """Return active brokerage/account/ticker keys from filtered historical data."""
+    required_columns = [
+        StockColumnNames.DATE,
+        StockColumnNames.TICKER,
+        StockColumnNames.QUANTITY,
+        StockColumnNames.BROKERAGE,
+        StockColumnNames.ACCOUNT_NAME,
+    ]
+    if any(col not in historical_df.columns for col in required_columns):
+        return []
+
+    try:
+        latest_data = historical_df.copy()
+        latest_data["_position_key"] = _build_position_key(latest_data)
+        latest_data = (
+            latest_data
+            .sort_values(StockColumnNames.DATE)
+            .groupby("_position_key")
+            .last()
+            .reset_index()
+        )
+        return latest_data.loc[
+            latest_data[StockColumnNames.QUANTITY] > 0, "_position_key"
+        ].tolist()
+    except Exception:
+        return []
+
+
+def _filter_trading_log_to_active_positions(
+    trading_log_df: pd.DataFrame,
+    active_position_keys: list[str],
+) -> pd.DataFrame:
+    """Keep only rows matching active brokerage/account/ticker positions."""
+    if trading_log_df is None or trading_log_df.empty or not active_position_keys:
+        return pd.DataFrame()
+
+    required_columns = [
+        StockColumnNames.BROKERAGE,
+        StockColumnNames.ACCOUNT_NAME,
+        StockColumnNames.TICKER,
+    ]
+    if any(col not in trading_log_df.columns for col in required_columns):
+        return trading_log_df.copy()
+
+    filtered = trading_log_df.copy()
+    filtered["_position_key"] = _build_position_key(filtered)
+    filtered = filtered[filtered["_position_key"].isin(active_position_keys)].copy()
+    return filtered.drop(columns=["_position_key"], errors='ignore')
+
+
 def _display_filter_summary(
     selected_brokerages: List[str],
     selected_accounts: List[str],
     selected_types: List[str],
     filtered_symbols: List[str],
+    position_count: int,
     date_range: Tuple[datetime, datetime],
 ) -> None:
     """Display summary of applied filters."""
@@ -137,7 +239,7 @@ def _display_filter_summary(
                 st.caption("All")
 
         with col4:
-            st.metric("Positions", len(filtered_symbols))
+            st.metric("Positions", position_count)
             if len(filtered_symbols) <= 5:
                 st.caption(", ".join(filtered_symbols))
             else:
@@ -153,23 +255,66 @@ def _display_filter_summary(
             st.caption(StockTrackerConfig.FILTER_DATE_RANGE_ALL)
 
 
+def _render_stock_tracker_summary(
+    historical_filtered: pd.DataFrame,
+    trading_log_filtered: pd.DataFrame,
+    filtered_symbols: List[str],
+    position_count: int,
+    date_range: Tuple[datetime, datetime],
+) -> None:
+    """Render a cohesive Stock Tracker summary surface like the other main products."""
+    if historical_filtered.empty:
+        return
+
+    latest_date = pd.to_datetime(historical_filtered[StockColumnNames.DATE]).max()
+    latest_label = latest_date.strftime("%b %d, %Y") if pd.notna(latest_date) else "N/A"
+    brokerages = historical_filtered[StockColumnNames.BROKERAGE].nunique()
+    accounts = historical_filtered[StockColumnNames.ACCOUNT_NAME].nunique()
+    types = historical_filtered[StockColumnNames.INVESTMENT_TYPE].nunique()
+    trade_count = len(trading_log_filtered) if trading_log_filtered is not None else 0
+
+    render_section_intro(
+        "Stock Tracker",
+        "Move from the latest holdings snapshot into overview, performance, allocation, risk, transactions, and cost basis without losing brokerage/account context.",
+    )
+
+    pills = [
+        ("Latest Snapshot", latest_label),
+        ("Brokerages", str(brokerages)),
+        ("Accounts", str(accounts)),
+        ("Types", str(types)),
+        ("Positions", str(position_count)),
+        ("Symbols", str(len(filtered_symbols))),
+    ]
+    if trade_count:
+        pills.append(("Transactions", f"{trade_count:,}"))
+    if len(date_range) == 2 and date_range[0] and date_range[1]:
+        pills.append(("Range", f"{date_range[0]} to {date_range[1]}"))
+    render_accent_pills(pills)
+    st.divider()
+
+
 def show_stock_tracker(
     trading_log: pd.DataFrame,
     historical: pd.DataFrame,
 ) -> None:
     """Render the Stock Tracker view with filtering and analytics."""
     try:
-        st.title(StockTrackerConfig.TITLE)
+        inject_surface_styles()
 
         if historical is None or historical.empty:
-            st.error(
-                "Historical tracking data not found. "
-                "Please ensure your Historical_Tracking sheet has data."
-            )
-            st.info(
-                "Required columns: Date, ticker (or Symbol), quantity, Last Close, "
-                "Current Value, Cost Basis, Total Gain/Loss, Total Gain/Loss %, "
-                "Brokerage, Account Name, Investment Type"
+            render_empty_state(
+                title="No Historical Tracking Data",
+                message=(
+                    "Historical tracking data not found. Please ensure your "
+                    "`Historical_Tracking` sheet has data."
+                ),
+                show_tips=True,
+                tips=[
+                    "Run `historical_stock_tracking.py` to rebuild the sheet.",
+                    "Verify the workbook includes `Date`, `ticker`, `quantity`, `Brokerage`, `Account Name`, and `Investment Type`.",
+                    "Check the selected filters and date range.",
+                ],
             )
             return
 
@@ -184,12 +329,17 @@ def show_stock_tracker(
         missing = [label for column, label in required_columns.items() if column not in historical.columns]
 
         if missing:
-            st.error(
-                f"Historical tracking data is missing required columns: {', '.join(missing)}"
-            )
-            st.info(
-                "Please add these columns to your Historical_Tracking sheet: "
-                "Brokerage, Account Name, Investment Type"
+            render_empty_state(
+                title="Historical Tracking Columns Missing",
+                message=(
+                    f"Historical tracking data is missing required columns: {', '.join(missing)}"
+                ),
+                show_tips=True,
+                tips=[
+                    "Rebuild `Historical_Tracking` from the latest script.",
+                    "Ensure the sheet includes Brokerage, Account Name, and Investment Type.",
+                    "Open the available-columns expander below to compare the loaded schema.",
+                ],
             )
             with st.expander(StockTrackerConfig.AVAILABLE_COLUMNS_TITLE):
                 st.write(list(historical.columns))
@@ -228,6 +378,8 @@ def show_stock_tracker(
             return
 
         filtered_symbols = _get_filtered_symbols(historical_filtered)
+        position_count = _get_position_count(historical_filtered)
+        active_position_keys = _get_active_position_keys(historical_filtered)
 
         if not filtered_symbols:
             st.info("No currently owned positions found for the selected filters.")
@@ -235,19 +387,34 @@ def show_stock_tracker(
 
         if trading_log is not None and not trading_log.empty:
             try:
-                trading_log_filtered = trading_log[
-                    trading_log[StockColumnNames.TICKER].isin(filtered_symbols)
-                ].copy()
+                trading_log_filtered = _filter_by_header_selections(
+                    trading_log,
+                    selected_brokerages,
+                    selected_accounts,
+                    selected_types,
+                )
+                trading_log_filtered = _filter_trading_log_to_active_positions(
+                    trading_log_filtered,
+                    active_position_keys,
+                )
             except Exception:
                 trading_log_filtered = pd.DataFrame()
         else:
             trading_log_filtered = pd.DataFrame()
 
+        _render_stock_tracker_summary(
+            historical_filtered,
+            trading_log_filtered,
+            filtered_symbols,
+            position_count,
+            date_range,
+        )
         _display_filter_summary(
             selected_brokerages,
             selected_accounts,
             selected_types,
             filtered_symbols,
+            position_count,
             date_range,
         )
 
@@ -274,7 +441,7 @@ def show_stock_tracker(
             },
             {
                 'render_func': transactions.render,
-                'args': [trading_log_filtered],
+                'args': [trading_log_filtered, historical_filtered],
                 'context': 'transactions',
             },
             {

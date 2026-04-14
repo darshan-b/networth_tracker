@@ -9,7 +9,15 @@ from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 
+from config import ChartConfig
 from ui.charts import create_cost_basis_comparison
+from ui.components.surfaces import (
+    inject_surface_styles,
+    render_accent_pills,
+    render_metric_card,
+    render_page_hero,
+    render_section_intro,
+)
 
 
 def get_date_range(period: str, end_date: datetime) -> datetime:
@@ -52,7 +60,13 @@ def render(
         trading_log: Trading log DataFrame (already filtered)
     """
     try:
-        st.header("Portfolio Overview")
+        inject_surface_styles()
+        render_page_hero(
+            "Stocks",
+            "Overview",
+            "Review the current filtered portfolio, contribution context, and period movement.",
+            "Holdings stay brokerage/account aware so duplicate tickers do not collapse into one row.",
+        )
         
         if historical_df.empty:
             st.warning("No historical tracking data available for selected filters.")
@@ -70,18 +84,33 @@ def render(
             st.warning(f"No data available for the selected time range ({time_range}).")
             return
         
-        # Get latest data for each symbol from filtered historical data
-        latest_data = historical_filtered.sort_values('Date').groupby(['Brokerage', 'Account Name', 'ticker']).last().reset_index()
-        
-        # Get currently owned symbols (quantity > 0)
-        currently_owned = latest_data[latest_data['quantity'] > 0]['ticker'].tolist()
-        
-        # Filter to only currently owned
-        latest_data = latest_data[latest_data['ticker'].isin(currently_owned)].copy()
-        
-        # Get start data for period
-        start_data = historical_filtered.sort_values('Date').groupby('ticker').first().reset_index()
-        start_data = start_data[start_data['ticker'].isin(currently_owned)].copy()
+        historical_filtered = historical_filtered.copy()
+        historical_filtered['position_key'] = (
+            historical_filtered['Brokerage'].astype(str)
+            + '||' + historical_filtered['Account Name'].astype(str)
+            + '||' + historical_filtered['ticker'].astype(str)
+        )
+
+        # Get latest data for each distinct position from filtered historical data
+        latest_data = (
+            historical_filtered.sort_values('Date')
+            .groupby(['Brokerage', 'Account Name', 'ticker', 'position_key'])
+            .last()
+            .reset_index()
+        )
+
+        # Keep only currently owned positions
+        latest_data = latest_data[latest_data['quantity'] > 0].copy()
+        currently_owned = latest_data['position_key'].tolist()
+
+        # Get start data for the same positions
+        start_data = (
+            historical_filtered.sort_values('Date')
+            .groupby('position_key')
+            .first()
+            .reset_index()
+        )
+        start_data = start_data[start_data['position_key'].isin(currently_owned)].copy()
         
         if latest_data.empty:
             st.info("No positions found for the selected period.")
@@ -91,13 +120,21 @@ def render(
         metrics = _calculate_portfolio_metrics(latest_data)
         period_return = _calculate_period_return(start_data, latest_data)
         
+        render_section_intro(
+            "Snapshot",
+            "Use these cards to compare current value, cost basis, gain/loss, and contribution efficiency for the active filter set.",
+        )
         _render_metric_cards(metrics, period_return, time_range, trading_log, latest_data)
         
         # Portfolio Performance Chart
-        st.header("Portfolio Analysis")
+        st.divider()
+        render_section_intro(
+            "Portfolio Analysis",
+            "Track how the filtered portfolio value evolved against total cost basis over the selected period.",
+        )
         
         historical_owned = historical_filtered[
-            historical_filtered['ticker'].isin(currently_owned)
+            historical_filtered['position_key'].isin(currently_owned)
         ]
         
         fig = create_cost_basis_comparison(historical_owned)
@@ -107,8 +144,11 @@ def render(
             st.info("Unable to create performance comparison chart.")
         
         # Holdings Table
-        st.header("Current Holdings")
-        _render_holdings_table(latest_data, start_data, historical_filtered, time_range)
+        render_section_intro(
+            "Current Holdings",
+            "Latest active positions for the current filter set, kept separate by brokerage and account.",
+        )
+        _render_holdings_table(latest_data, start_data, time_range)
         
     except Exception as e:
         st.error(f"Error rendering overview: {str(e)}")
@@ -156,7 +196,6 @@ def _calculate_portfolio_metrics(latest_data: pd.DataFrame) -> dict:
     Returns:
         Dictionary of portfolio metrics
     """
-    st.dataframe(latest_data)
     total_value = latest_data['Current Value'].sum()
     total_cost = latest_data['Cost Basis'].sum()
     total_gain_loss = latest_data['Total Gain/Loss'].sum()
@@ -180,7 +219,13 @@ def _get_latest_data(df: pd.DataFrame, owned_symbols: List[str]) -> pd.DataFrame
     Returns:
         DataFrame with latest data per symbol
     """
-    latest = df.sort_values('Date').groupby('ticker').last().reset_index()
+    latest = df.copy()
+    latest['position_key'] = (
+        latest['Brokerage'].astype(str)
+        + '||' + latest['Account Name'].astype(str)
+        + '||' + latest['ticker'].astype(str)
+    )
+    latest = latest.sort_values('Date').groupby('position_key').last().reset_index()
     return latest[latest['ticker'].isin(owned_symbols)].copy()
 
 
@@ -194,7 +239,13 @@ def _get_start_data(df: pd.DataFrame, owned_symbols: List[str]) -> pd.DataFrame:
     Returns:
         DataFrame with first data per symbol
     """
-    start = df.sort_values('Date').groupby('ticker').first().reset_index()
+    start = df.copy()
+    start['position_key'] = (
+        start['Brokerage'].astype(str)
+        + '||' + start['Account Name'].astype(str)
+        + '||' + start['ticker'].astype(str)
+    )
+    start = start.sort_values('Date').groupby('position_key').first().reset_index()
     return start[start['ticker'].isin(owned_symbols)].copy()
 
 
@@ -216,6 +267,64 @@ def _calculate_period_return(start_data: pd.DataFrame, latest_data: pd.DataFrame
     return 0.0
 
 
+def _get_income_like_mask(trading_log: pd.DataFrame) -> pd.Series:
+    """Identify dividend/distribution/credit rows used for income tracking."""
+    if 'Transaction Type' not in trading_log.columns:
+        return pd.Series(False, index=trading_log.index)
+
+    return trading_log['Transaction Type'].fillna('').astype(str).str.contains(
+        'dividend|distribution|credit', case=False, regex=True
+    )
+
+
+
+def _get_exchange_like_mask(trading_log: pd.DataFrame) -> pd.Series:
+    """Identify exchange-style rows that can move basis without being buys."""
+    if 'Transaction Type' not in trading_log.columns:
+        return pd.Series(False, index=trading_log.index)
+
+    return trading_log['Transaction Type'].fillna('').astype(str).str.contains(
+        'exchange', case=False, regex=True
+    )
+
+
+def _calculate_cash_flow_metrics(trading_log: pd.DataFrame) -> dict:
+    """Calculate contribution and basis-adjustment metrics from the filtered trading log."""
+    if trading_log is None or trading_log.empty:
+        return {
+            'cash_contrib': 0.0,
+            'total_dividends': 0.0,
+            'cash_income': 0.0,
+            'stock_income': 0.0,
+            'stock_income_value': 0.0,
+            'exchange_value': 0.0,
+            'cash_exchange_value': 0.0,
+            'stock_exchange_value': 0.0,
+        }
+
+    amount_series = pd.to_numeric(trading_log['Amount'], errors='coerce') if 'Amount' in trading_log.columns else pd.Series(0.0, index=trading_log.index)
+    quantity_series = pd.to_numeric(trading_log['Quantity'], errors='coerce') if 'Quantity' in trading_log.columns else pd.Series(0.0, index=trading_log.index)
+
+    buy_mask = trading_log['Transaction Type'].eq('Buy') if 'Transaction Type' in trading_log.columns else pd.Series(False, index=trading_log.index)
+    income_mask = _get_income_like_mask(trading_log) & amount_series.gt(0)
+    exchange_mask = _get_exchange_like_mask(trading_log) & amount_series.gt(0)
+    stock_income_mask = income_mask & quantity_series.gt(0)
+    cash_income_mask = income_mask & ~quantity_series.gt(0)
+    stock_exchange_mask = exchange_mask & quantity_series.gt(0)
+    cash_exchange_mask = exchange_mask & ~quantity_series.gt(0)
+
+    return {
+        'cash_contrib': amount_series.loc[buy_mask].sum(),
+        'total_dividends': amount_series.loc[income_mask].sum(),
+        'cash_income': amount_series.loc[cash_income_mask].sum(),
+        'stock_income': amount_series.loc[stock_income_mask].sum(),
+        'stock_income_value': quantity_series.loc[stock_income_mask].sum(),
+        'exchange_value': amount_series.loc[exchange_mask].sum(),
+        'cash_exchange_value': amount_series.loc[cash_exchange_mask].sum(),
+        'stock_exchange_value': amount_series.loc[stock_exchange_mask].sum(),
+    }
+
+
 def _render_metric_cards(
     metrics: dict,
     period_return: float,
@@ -235,58 +344,101 @@ def _render_metric_cards(
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
+        render_metric_card(
             "Total Value",
-            f"${metrics['total_value']:,.2f}"
+            f"${metrics['total_value']:,.0f}",
+            "Latest snapshot",
+            "Current market value across the filtered active positions.",
+            "positive",
         )
     
     with col2:
-        st.metric(
+        render_metric_card(
             "Total Cost Basis",
-            f"${metrics['total_cost']:,.2f}"
+            f"${metrics['total_cost']:,.0f}",
+            "Capital at work",
+            "Remaining cost basis for the filtered active positions.",
+            "neutral",
         )
     
     with col3:
-        st.metric(
+        render_metric_card(
             "Total Gain/Loss",
-            f"${metrics['total_gain_loss']:,.2f}",
-            delta=f"{metrics['total_gain_loss_pct']:.2f}%"
+            f"${metrics['total_gain_loss']:,.0f}",
+            f"{metrics['total_gain_loss_pct']:.2f}%",
+            "Unrealized gain/loss on the current filtered portfolio.",
+            "positive" if metrics['total_gain_loss'] > 0 else "negative" if metrics['total_gain_loss'] < 0 else "neutral",
         )
     
     with col4:
-        st.metric(
+        render_metric_card(
             f"Period Return ({time_range})",
-            f"{period_return:.2f}%"
+            f"{period_return:.2f}%",
+            "Selected range",
+            "Change in position value over the chosen overview period.",
+            "positive" if period_return > 0 else "negative" if period_return < 0 else "neutral",
         )
     
     # Additional metrics row
     if not trading_log.empty:
-        col5, col6 = st.columns(2)
-        
-        total_contrib = trading_log[
-            trading_log['Transaction Type'] == 'Buy'
-        ]['Amount'].sum()
-        
+        cash_flow_metrics = _calculate_cash_flow_metrics(trading_log)
+        cash_contrib = cash_flow_metrics['cash_contrib']
+        total_dividends = cash_flow_metrics['total_dividends']
+        cash_income = cash_flow_metrics['cash_income']
+        stock_income = cash_flow_metrics['stock_income']
+        exchange_value = cash_flow_metrics['exchange_value']
+        cash_exchange_value = cash_flow_metrics['cash_exchange_value']
+        stock_exchange_value = cash_flow_metrics['stock_exchange_value']
+        basis_adjustment = metrics['total_cost'] - cash_contrib
+
+        col5, col6, col7 = st.columns(3)
+
         with col5:
-            st.metric(
-                "Total Contributions", 
-                f"${total_contrib:,.2f}"
+            render_metric_card(
+                "Cash Contributions",
+                f"${cash_contrib:,.0f}",
+                "Filtered buys",
+                "Cash put into the filtered holdings from rows marked `Buy`.",
+                "neutral",
             )
-        
+
         with col6:
-            gain_on_contrib = metrics['total_value'] - total_contrib
-            gain_pct = (gain_on_contrib * 100 / total_contrib) if total_contrib > 0 else 0
-            st.metric(
-                'Gain on Contributions',
-                f"${gain_on_contrib:,.2f}",
-                delta=f"{gain_pct:.2f}%"
+            adjustment_pct = (basis_adjustment * 100 / cash_contrib) if cash_contrib > 0 else 0
+            render_metric_card(
+                'Basis vs Contributions',
+                f"${basis_adjustment:,.0f}",
+                f"{adjustment_pct:.2f}%",
+                "Remaining cost basis minus cash contributions. Positive values usually come from reinvested dividends, credits, exchanges, or other share-based additions.",
+                "positive" if basis_adjustment > 0 else "negative" if basis_adjustment < 0 else "neutral",
             )
+
+        with col7:
+            render_metric_card(
+                'Total Dividend/Credit',
+                f"${total_dividends:,.0f}",
+                "Cash + stock",
+                "Positive dividend, distribution, and credit amounts recorded in the filtered trading log.",
+                "neutral",
+            )
+
+        render_accent_pills(
+            [
+                ("Cash Income", f"${cash_income:,.0f}"),
+                ("Stock Income", f"${stock_income:,.0f}"),
+                ("Exchanges", f"${exchange_value:,.0f}"),
+                ("Cash Exchanges", f"${cash_exchange_value:,.0f}"),
+                ("Stock Exchanges", f"${stock_exchange_value:,.0f}"),
+                ("Active Positions", str(len(latest_data))),
+                ("Unique Symbols", str(latest_data['ticker'].nunique())),
+                ("Accounts", str(latest_data['Account Name'].nunique())),
+                ("Brokerages", str(latest_data['Brokerage'].nunique())),
+            ]
+        )
 
 
 def _render_holdings_table(
     latest_data: pd.DataFrame,
     start_data: pd.DataFrame,
-    summary_df: pd.DataFrame,
     time_range: str
 ) -> None:
     """Render holdings table with detailed position information.
@@ -294,7 +446,6 @@ def _render_holdings_table(
     Args:
         latest_data: Latest position data
         start_data: Period start data
-        summary_df: Summary DataFrame
         time_range: Selected time range string
     """
     holdings_display = latest_data[latest_data['quantity'] > 0].copy()
@@ -309,8 +460,8 @@ def _render_holdings_table(
     
     # Calculate period performance
     holdings_display = holdings_display.merge(
-        start_data[['ticker', 'Current Value']],
-        on='ticker',
+        start_data[['position_key', 'Current Value']],
+        on='position_key',
         how='left',
         suffixes=('', '_start')
     )
@@ -325,23 +476,24 @@ def _render_holdings_table(
         axis=1
     )
     
-    # Add account information
-    holdings_display = holdings_display.merge(
-        summary_df[['ticker', 'Account Name']],
-        left_on='ticker',
-        right_on='ticker',
-        how='left'
-    )
+    required_columns = [
+        'Brokerage', 'ticker', 'Account Name', 'quantity', 'Avg Cost', 'Last Close',
+        'Current Value', 'Cost Basis', 'Total Gain/Loss', 'Total Gain/Loss %',
+        'Period Return %'
+    ]
+    missing_columns = [col for col in required_columns if col not in holdings_display.columns]
+    if missing_columns:
+        st.error(
+            "Unable to render holdings table because these columns are missing: "
+            + ", ".join(missing_columns)
+        )
+        return
     
     # Select and rename columns
-    holdings_display = holdings_display[[
-        'ticker', 'Account Name', 'quantity', 'Avg Cost', 'Last Close', 
-        'Current Value', 'Cost Basis', 'Total Gain/Loss', 'Total Gain/Loss %', 
-        'Period Return %'
-    ]].copy()
+    holdings_display = holdings_display[required_columns].copy()
     
     holdings_display.columns = [
-        'ticker', 'Account', 'Quantity', 'Avg Cost', 'Last Price', 
+        'Brokerage', 'ticker', 'Account', 'Quantity', 'Avg Cost', 'Last Price', 
         'Current Value', 'Cost Basis', 'Gain/Loss ($)', 'Gain/Loss (%)', 
         f'{time_range} Return (%)'
     ]
@@ -349,7 +501,7 @@ def _render_holdings_table(
     # Display formatted table
     st.dataframe(
         holdings_display.style.format({
-            'Quantity': '{:.4f}',
+            'Quantity': '{:.3f}',
             'Avg Cost': '${:.2f}',
             'Last Price': '${:.2f}',
             'Current Value': '${:,.2f}',
@@ -366,4 +518,3 @@ def _render_holdings_table(
         width="stretch",
         height=400
     )
-
