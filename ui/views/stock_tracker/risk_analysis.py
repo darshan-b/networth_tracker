@@ -1,34 +1,19 @@
-"""Risk analysis tab for portfolio analysis.
-
-This module provides risk metrics including drawdown and correlation analysis.
-"""
+"""Risk analysis tab for portfolio analysis."""
 
 from typing import List
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from config import ChartConfig
-from data.calculations import aggregate_portfolio_daily
+from data.stock_analytics import (
+    aggregate_portfolio_daily,
+    aggregate_symbol_history,
+    calculate_max_drawdown,
+    calculate_return_statistics,
+)
 from ui.charts import create_drawdown_chart, create_correlation_heatmap
 from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
-
-
-def _aggregate_symbol_history(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
-    """Aggregate one clean daily symbol series across brokerages/accounts."""
-    symbol_data = df[df['ticker'] == symbol].copy()
-    if symbol_data.empty:
-        return symbol_data
-
-    return (
-        symbol_data.groupby('Date', as_index=False)
-        .agg({
-            'Last Close': 'mean',
-            'Current Value': 'sum',
-        })
-        .sort_values('Date')
-        .reset_index(drop=True)
-    )
 
 
 def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
@@ -101,32 +86,22 @@ def _render_risk_summary(df: pd.DataFrame, symbols: List[str]) -> None:
         return
     
     # Calculate volatility
-    daily_returns = portfolio_daily['Current Value'].pct_change().dropna()
-    volatility = daily_returns.std() * 100
-    annualized_volatility = volatility * (252 ** 0.5)  # Assuming 252 trading days
-    
-    # Calculate max drawdown
-    cumulative = portfolio_daily['Current Value'] / portfolio_daily['Current Value'].iloc[0]
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative - running_max) / running_max * 100
-    max_drawdown = drawdown.min()
-    
-    # Calculate Value at Risk (95% confidence)
-    var_95 = daily_returns.quantile(0.05) * 100
-    
+    stats = calculate_return_statistics(portfolio_daily['Daily Return'])
+    max_drawdown = calculate_max_drawdown(portfolio_daily['Drawdown']) * 100
+
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Daily Volatility", f"{volatility:.2f}%")
+        st.metric("Daily Volatility", f"{stats['volatility'] * 100:.2f}%")
     
     with col2:
-        st.metric("Annualized Volatility", f"{annualized_volatility:.2f}%")
+        st.metric("Annualized Volatility", f"{stats['annualized_volatility'] * 100:.2f}%")
     
     with col3:
         st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
     
     with col4:
-        st.metric("VaR (95%)", f"{var_95:.2f}%")
+        st.metric("VaR (95%)", f"{stats['value_at_risk_95'] * 100:.2f}%")
     
     st.divider()
 
@@ -147,11 +122,7 @@ def _render_drawdown_analysis(df: pd.DataFrame) -> None:
         fig = create_drawdown_chart(portfolio_daily)
         st.plotly_chart(fig, config=ChartConfig.STREAMLIT_CONFIG)
         
-        # Calculate drawdown statistics
-        cumulative = portfolio_daily['Current Value'] / portfolio_daily['Current Value'].iloc[0]
-        running_max = cumulative.expanding().max()
-        drawdown = (cumulative - running_max) / running_max * 100
-        
+        drawdown = portfolio_daily['Drawdown'] * 100
         max_dd = drawdown.min()
         avg_dd = drawdown[drawdown < 0].mean() if len(drawdown[drawdown < 0]) > 0 else 0
         
@@ -211,28 +182,13 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
             continue
         
         # Calculate metrics
-        returns = (
-            symbol_data.set_index('Date')['Last Close']
-            .pct_change()
-            .dropna()
-        )
+        returns = symbol_data.set_index('Date')['Daily Return'].dropna()
         
         if len(returns) == 0:
             continue
         
-        volatility = returns.std() * 100
-        annualized_vol = volatility * (252 ** 0.5)
-        
-        # Drawdown
-        prices = symbol_data['Last Close']
-        cumulative = prices / prices.iloc[0]
-        running_max = cumulative.expanding().max()
-        drawdown = (cumulative - running_max) / running_max * 100
-        max_drawdown = drawdown.min()
-        
-        # Downside deviation
-        downside_returns = returns[returns < 0]
-        downside_dev = downside_returns.std() * 100 if len(downside_returns) > 0 else 0
+        stats = calculate_return_statistics(returns)
+        max_drawdown = calculate_max_drawdown(symbol_data['Drawdown']) * 100
         
         # Beta (relative to equal-weighted portfolio)
         portfolio_returns = (
@@ -262,10 +218,10 @@ def _render_risk_table(df: pd.DataFrame, symbols: List[str]) -> None:
         
         risk_data.append({
             'ticker': symbol,
-            'Volatility %': volatility,
-            'Annual Volatility %': annualized_vol,
+            'Volatility %': stats['volatility'] * 100,
+            'Annual Volatility %': stats['annualized_volatility'] * 100,
             'Max Drawdown %': max_drawdown,
-            'Downside Dev %': downside_dev,
+            'Downside Dev %': stats['downside_deviation'] * 100,
             'Beta': beta
         })
     

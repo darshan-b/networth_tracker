@@ -1,8 +1,4 @@
-"""Stock Tracker view module.
-
-This module provides the main view for stock portfolio tracking and analysis,
-using only Historical Tracking data (no Summary or Tracking sheets needed).
-"""
+"""Stock Tracker view module."""
 
 from datetime import datetime
 from typing import List, Tuple
@@ -12,6 +8,12 @@ import streamlit as st
 
 from config import StockTrackerConfig
 from app_constants import StockColumnNames
+from data.stock_analytics import (
+    build_position_key,
+    get_active_position_keys,
+    get_active_latest_positions,
+    get_filtered_symbols,
+)
 from ui.components.utils import render_empty_state, render_tabs_safely
 from ui.components.filters import render_stock_header_filters, render_stock_sidebar_filters
 from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
@@ -23,21 +25,9 @@ from ui.views.stock_tracker import (
     risk_analysis,
     transactions,
 )
-
-
 def _normalize_key_series(series: pd.Series) -> pd.Series:
     """Normalize label fields so filters and joins survive spacing/case drift."""
-    return series.fillna('').astype(str).str.strip().str.casefold()
-
-
-
-def _build_position_key(df: pd.DataFrame) -> pd.Series:
-    """Build a stable brokerage/account/ticker key for position-level analysis."""
-    return (
-        _normalize_key_series(df[StockColumnNames.BROKERAGE])
-        + "||" + _normalize_key_series(df[StockColumnNames.ACCOUNT_NAME])
-        + "||" + _normalize_key_series(df[StockColumnNames.TICKER])
-    )
+    return series.fillna("").astype(str).str.strip().str.casefold()
 
 
 def _filter_by_header_selections(
@@ -104,19 +94,7 @@ def _get_filtered_symbols(historical_df: pd.DataFrame) -> List[str]:
         return []
 
     try:
-        latest_data = historical_df.copy()
-        latest_data["_position_key"] = _build_position_key(latest_data)
-        latest_data = (
-            latest_data
-            .sort_values(StockColumnNames.DATE)
-            .groupby("_position_key")
-            .last()
-            .reset_index()
-        )
-        currently_owned = latest_data[
-            latest_data[StockColumnNames.QUANTITY] > 0
-        ][StockColumnNames.TICKER].unique().tolist()
-        return sorted(currently_owned)
+        return get_filtered_symbols(historical_df)
     except Exception:
         return []
 
@@ -134,16 +112,7 @@ def _get_position_count(historical_df: pd.DataFrame) -> int:
         return 0
 
     try:
-        latest_data = historical_df.copy()
-        latest_data["_position_key"] = _build_position_key(latest_data)
-        latest_data = (
-            latest_data
-            .sort_values(StockColumnNames.DATE)
-            .groupby("_position_key")
-            .last()
-            .reset_index()
-        )
-        return int((latest_data[StockColumnNames.QUANTITY] > 0).sum())
+        return int(len(get_active_latest_positions(historical_df)))
     except Exception:
         return 0
 
@@ -161,18 +130,7 @@ def _get_active_position_keys(historical_df: pd.DataFrame) -> list[str]:
         return []
 
     try:
-        latest_data = historical_df.copy()
-        latest_data["_position_key"] = _build_position_key(latest_data)
-        latest_data = (
-            latest_data
-            .sort_values(StockColumnNames.DATE)
-            .groupby("_position_key")
-            .last()
-            .reset_index()
-        )
-        return latest_data.loc[
-            latest_data[StockColumnNames.QUANTITY] > 0, "_position_key"
-        ].tolist()
+        return get_active_position_keys(historical_df)
     except Exception:
         return []
 
@@ -194,7 +152,7 @@ def _filter_trading_log_to_active_positions(
         return trading_log_df.copy()
 
     filtered = trading_log_df.copy()
-    filtered["_position_key"] = _build_position_key(filtered)
+    filtered["_position_key"] = build_position_key(filtered)
     filtered = filtered[filtered["_position_key"].isin(active_position_keys)].copy()
     return filtered.drop(columns=["_position_key"], errors='ignore')
 

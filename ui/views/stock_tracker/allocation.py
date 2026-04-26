@@ -1,37 +1,17 @@
-"""Allocation tab for portfolio analysis.
+"""Allocation tab for portfolio analysis."""
 
-This module provides asset allocation visualization and gain/loss analysis.
-"""
-
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from config import ChartConfig
+from data.stock_analytics import get_active_latest_positions
 from ui.charts import create_allocation_chart, create_gain_loss_chart
 from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
 
 
-def _build_position_key(df: pd.DataFrame) -> pd.Series:
-    """Build a stable position key to keep same-ticker holdings separate before aggregation."""
-    return (
-        df['Brokerage'].astype(str)
-        + '||' + df['Account Name'].astype(str)
-        + '||' + df['ticker'].astype(str)
-    )
-
-
 def _aggregate_latest_holdings(historical_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate active latest holdings to ticker-level allocation view."""
-    latest_data = historical_df.copy()
-    latest_data['position_key'] = _build_position_key(latest_data)
-    latest_data = (
-        latest_data
-        .sort_values('Date')
-        .groupby('position_key')
-        .last()
-        .reset_index()
-    )
-    latest_data = latest_data[latest_data['quantity'] > 0].copy()
+    latest_data = get_active_latest_positions(historical_df)
     if latest_data.empty:
         return latest_data
 

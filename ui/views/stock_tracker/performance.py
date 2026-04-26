@@ -1,34 +1,14 @@
-"""Performance tab for portfolio analysis.
-
-This module provides performance comparison and analysis across symbols.
-"""
+"""Performance tab for portfolio analysis."""
 
 from typing import List
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from config import ChartConfig
+from data.stock_analytics import aggregate_symbol_history, calculate_annualized_return, calculate_return_statistics
 from ui.charts import create_performance_comparison
 from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
-
-
-def _aggregate_symbol_history(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
-    """Aggregate one clean daily series per symbol across brokerages/accounts."""
-    symbol_data = df[df['ticker'] == symbol].sort_values('Date').copy()
-    if symbol_data.empty:
-        return symbol_data
-
-    return (
-        symbol_data.groupby('Date', as_index=False)
-        .agg({
-            'Last Close': 'mean',
-            'Current Value': 'sum',
-            'Cost Basis': 'sum',
-        })
-        .sort_values('Date')
-        .reset_index(drop=True)
-    )
 
 
 def render(historical_df: pd.DataFrame, selected_symbols: List[str]) -> None:
@@ -113,35 +93,38 @@ def _render_performance_table(df: pd.DataFrame, symbols: List[str]) -> None:
     perf_data = []
     
     for symbol in symbols:
-        symbol_data = _aggregate_symbol_history(df, symbol)
+        symbol_data = aggregate_symbol_history(df, symbol)
         
         if len(symbol_data) < 2:
             continue
         
-        # Calculate returns
         start_price = symbol_data['Last Close'].iloc[0]
         end_price = symbol_data['Last Close'].iloc[-1]
         start_value = symbol_data['Current Value'].iloc[0]
         end_value = symbol_data['Current Value'].iloc[-1]
         start_cost = symbol_data['Cost Basis'].iloc[0]
         end_cost = symbol_data['Cost Basis'].iloc[-1]
-        
+
         price_return = ((end_price - start_price) / start_price) * 100 if start_price > 0 else 0
         value_return = ((end_value - start_value) / start_value) * 100 if start_value > 0 else 0
         total_return = ((end_value - end_cost) / end_cost) * 100 if end_cost > 0 else 0
-        
-        # Calculate volatility (standard deviation of daily returns)
-        daily_returns = symbol_data['Last Close'].pct_change().dropna()
-        volatility = daily_returns.std() * 100 if len(daily_returns) > 0 else 0
-        
+        annualized_return = calculate_annualized_return(
+            start_price,
+            end_price,
+            symbol_data['Date'].iloc[0],
+            symbol_data['Date'].iloc[-1],
+        ) * 100
+        stats = calculate_return_statistics(symbol_data['Daily Return'])
+
         perf_data.append({
             'ticker': symbol,
             'Start Price': start_price,
             'End Price': end_price,
             'Price Return %': price_return,
             'Value Return %': value_return,
+            'Annualized Price Return %': annualized_return,
             'Total Return %': total_return,
-            'Volatility %': volatility
+            'Volatility %': stats['annualized_volatility'] * 100,
         })
     
     if not perf_data:
@@ -157,6 +140,7 @@ def _render_performance_table(df: pd.DataFrame, symbols: List[str]) -> None:
             'End Price': '${:.2f}',
             'Price Return %': '{:.2f}%',
             'Value Return %': '{:.2f}%',
+            'Annualized Price Return %': '{:.2f}%',
             'Total Return %': '{:.2f}%',
             'Volatility %': '{:.2f}%'
         }).background_gradient(
@@ -177,52 +161,49 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
         df: Historical DataFrame
         symbols: List of symbols to analyze
     """
-    stats = []
+    stat_rows = []
     
     for symbol in symbols:
-        symbol_data = _aggregate_symbol_history(df, symbol)
+        symbol_data = aggregate_symbol_history(df, symbol)
         
         if len(symbol_data) < 2:
             continue
         
-        # Calculate various metrics
-        returns = symbol_data['Last Close'].pct_change().dropna()
-        
-        if len(returns) == 0:
+        symbol_stats = calculate_return_statistics(symbol_data['Daily Return'])
+        if (
+            symbol_stats['annualized_volatility'] == 0
+            and symbol_stats['best_day'] == 0
+            and symbol_stats['worst_day'] == 0
+        ):
             continue
-        
-        # Basic statistics
-        avg_return = returns.mean() * 100
-        std_return = returns.std() * 100
-        min_return = returns.min() * 100
-        max_return = returns.max() * 100
-        
-        # Sharpe ratio (simplified, assuming risk-free rate = 0)
-        sharpe = (avg_return / std_return) if std_return > 0 else 0
-        
-        stats.append({
+
+        stat_rows.append({
             'ticker': symbol,
-            'Avg Daily Return %': avg_return,
-            'Std Dev %': std_return,
-            'Min Return %': min_return,
-            'Max Return %': max_return,
-            'Sharpe Ratio': sharpe
+            'Avg Daily Return %': symbol_stats['avg_daily_return'] * 100,
+            'Annual Volatility %': symbol_stats['annualized_volatility'] * 100,
+            'Best Day %': symbol_stats['best_day'] * 100,
+            'Worst Day %': symbol_stats['worst_day'] * 100,
+            'Win Rate %': symbol_stats['win_rate'] * 100,
+            'Sharpe Ratio': symbol_stats['sharpe_ratio'],
+            'Sortino Ratio': symbol_stats['sortino_ratio'],
         })
     
-    if not stats:
+    if not stat_rows:
         st.info("Insufficient data for statistics calculation.")
         return
     
-    stats_df = pd.DataFrame(stats)
+    stats_df = pd.DataFrame(stat_rows)
     
     # Display formatted table
     st.dataframe(
         stats_df.style.format({
             'Avg Daily Return %': '{:.3f}%',
-            'Std Dev %': '{:.3f}%',
-            'Min Return %': '{:.2f}%',
-            'Max Return %': '{:.2f}%',
-            'Sharpe Ratio': '{:.3f}'
+            'Annual Volatility %': '{:.2f}%',
+            'Best Day %': '{:.2f}%',
+            'Worst Day %': '{:.2f}%',
+            'Win Rate %': '{:.1f}%',
+            'Sharpe Ratio': '{:.3f}',
+            'Sortino Ratio': '{:.3f}',
         }),
         width="stretch",
         hide_index=True
@@ -236,6 +217,7 @@ def _render_performance_statistics(df: pd.DataFrame, symbols: List[str]) -> None
         [
             ("Symbols", str(len(stats_df))),
             ("Best Sharpe", f"{stats_df['Sharpe Ratio'].max():.3f}"),
-            ("Highest Vol", f"{stats_df['Std Dev %'].max():.3f}%"),
+            ("Best Sortino", f"{stats_df['Sortino Ratio'].max():.3f}"),
+            ("Highest Vol", f"{stats_df['Annual Volatility %'].max():.2f}%"),
         ]
     )
