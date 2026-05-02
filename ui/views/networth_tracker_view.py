@@ -15,6 +15,7 @@ from data.validators import validate_dataframe
 from ui.components.utils import render_empty_state, render_tabs_safely
 from ui.components.surfaces import inject_surface_styles, render_accent_pills, render_section_intro
 from ui.views.networth_tracker.growth_over_time import show_growth_over_time
+from ui.views.networth_tracker.payout import show_payout_view
 from ui.views.networth_tracker.pivot_table import show_pivot_table
 from ui.views.networth_tracker.dashboard import render_dashboard
 from ui.views.networth_tracker.growth_projections import show_growth_projections
@@ -100,6 +101,11 @@ def show_networth_tracker(
             'render_func': show_growth_over_time,
             'args': [df_filtered],
             'context': 'growth chart',
+        },
+        {
+            'render_func': show_payout_view,
+            'args': [df_filtered],
+            'context': 'payout analysis',
         },
         {
             'render_func': show_pivot_table,

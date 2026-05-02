@@ -181,10 +181,16 @@ def inject_surface_styles() -> None:
         }
         div[data-testid="stPlotlyChart"] > div {
             border-radius: 18px;
-            overflow: hidden;
+            overflow: visible;
         }
         div[data-testid="stPlotlyChart"] .js-plotly-plot .plotly .main-svg {
             border-radius: 18px;
+        }
+        div[data-testid="stPlotlyChart"] .js-plotly-plot,
+        div[data-testid="stPlotlyChart"] .plot-container,
+        div[data-testid="stPlotlyChart"] .svg-container,
+        div[data-testid="stPlotlyChart"] .modebar {
+            overflow: visible !important;
         }
         div[data-testid="stTabs"] [data-baseweb="tab-list"] {
             gap: 0.45rem;

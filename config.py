@@ -229,6 +229,7 @@ class NetWorthConfig:
     TAB_NAMES = [
         "Overview",
         "Net Worth Over Time",
+        "Payout",
         "Summarized Table",
         "Growth Projections",
         "Data Explorer"

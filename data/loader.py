@@ -1,10 +1,12 @@
 """Data loading and preprocessing functions."""
 
 from pathlib import Path
+import re
 from typing import Dict, Tuple
 
 import pandas as pd
 import streamlit as st
+from openpyxl import load_workbook
 from app_constants import ColumnNames, StockColumnNames, StockSheetNames
 
 
@@ -14,6 +16,13 @@ DATA_DIR = PROJECT_ROOT / 'data'
 RAW_DATA_DIR = DATA_DIR / 'raw'
 DEFAULT_BUDGET_FILENAME = "budgets.csv"
 EMPTY_DF = pd.DataFrame()
+PAYOUT_WORKBOOK_TAXABLE_ACCOUNT_ALIAS = {
+    "IKBR": "Interactive Brokers",
+    "Robinhood": "Robinhood",
+    "Zerodha": "Zerodha",
+    "Fidelity-Ind": "Fidelity Brokerage",
+    "Fidelity-Roth": "Fidelity Roth",
+}
 
 
 def _resolve_raw_path(filename: str) -> Path:
@@ -38,6 +47,21 @@ def _show_load_error(filepath: Path, context: str, error: Exception) -> None:
     st.error(f"Unable to load {context.lower()}.")
     st.caption(f"Source: `{filepath}`")
     st.info(f"Check the file format, required columns, and sheet names. Details: {error}")
+
+
+def _coerce_float(value: object, fallback: float = 0.0) -> float:
+    """Safely coerce workbook values to float."""
+    try:
+        if value is None or pd.isna(value):
+            return fallback
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _extract_formula_numbers(formula: object) -> list[float]:
+    """Extract numeric literals from an Excel formula string."""
+    return [float(match) for match in re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?", str(formula or ""))]
 
 
 def _mask_account_identifier(value: object) -> str:
@@ -170,6 +194,83 @@ def _load_excel_sheet(filepath: Path, sheet_name: str, context: str) -> pd.DataF
     return EMPTY_DF.copy()
 
 
+@st.cache_data
+def load_payout_sheet_defaults(filename: str = "Investment.xlsx") -> dict[str, object]:
+    """Load workbook-backed payout assumptions from the payout sheet."""
+    workbook_defaults: dict[str, object] = {
+        "available": False,
+        "taxable_profit_assumptions": {},
+        "annual_salary": None,
+        "vacation_hours": None,
+        "vacation_after_tax_factor": 0.73,
+        "usd_to_inr_rate": 93.95,
+        "capital_gains_tax_rate": 0.15,
+        "vacation_payout": None,
+        "missing_fields": [],
+        "source": str(_resolve_raw_path(filename)),
+    }
+
+    workbook_path = _resolve_raw_path(filename)
+    try:
+        values_wb = load_workbook(workbook_path, data_only=True, read_only=True)
+        formulas_wb = load_workbook(workbook_path, data_only=False, read_only=True)
+        values_sheet = values_wb["payout"]
+        formulas_sheet = formulas_wb["payout"]
+
+        workbook_profit_assumptions: dict[str, float] = {}
+        for row_idx in range(3, 8):
+            workbook_label = str(values_sheet[f"B{row_idx}"].value or "").strip()
+            account_label = PAYOUT_WORKBOOK_TAXABLE_ACCOUNT_ALIAS.get(workbook_label)
+            if not account_label:
+                continue
+            workbook_profit_assumptions[account_label] = _coerce_float(values_sheet[f"D{row_idx}"].value)
+
+        if workbook_profit_assumptions:
+            workbook_defaults["taxable_profit_assumptions"] = workbook_profit_assumptions
+
+        salary_formula_numbers = _extract_formula_numbers(formulas_sheet["G3"].value)
+        if salary_formula_numbers:
+            workbook_defaults["annual_salary"] = salary_formula_numbers[0]
+
+        vacation_formula_numbers = _extract_formula_numbers(formulas_sheet["G4"].value)
+        factor_candidates = [number for number in vacation_formula_numbers if 0 < number < 1]
+        hour_candidates = [number for number in vacation_formula_numbers if number >= 10]
+        if factor_candidates:
+            workbook_defaults["vacation_after_tax_factor"] = factor_candidates[-1]
+        if hour_candidates:
+            workbook_defaults["vacation_hours"] = hour_candidates[0]
+
+        capital_gains_formula_numbers = _extract_formula_numbers(formulas_sheet["D8"].value)
+        if capital_gains_formula_numbers:
+            workbook_defaults["capital_gains_tax_rate"] = max(0.0, 1 - capital_gains_formula_numbers[-1])
+
+        workbook_fx_rate = _coerce_float(values_sheet["E12"].value, fallback=93.95)
+        if workbook_fx_rate > 0:
+            workbook_defaults["usd_to_inr_rate"] = workbook_fx_rate
+
+        workbook_vacation_payout = _coerce_float(values_sheet["G4"].value, fallback=0.0)
+        if workbook_vacation_payout > 0:
+            workbook_defaults["vacation_payout"] = workbook_vacation_payout
+
+        values_wb.close()
+        formulas_wb.close()
+    except Exception as error:
+        workbook_defaults["error"] = str(error)
+        return workbook_defaults
+
+    missing_fields: list[str] = []
+    if not workbook_defaults["taxable_profit_assumptions"]:
+        missing_fields.append("taxable profit assumptions")
+    if workbook_defaults["annual_salary"] is None:
+        missing_fields.append("annual salary seed")
+    if workbook_defaults["vacation_hours"] is None:
+        missing_fields.append("vacation hours")
+
+    workbook_defaults["missing_fields"] = missing_fields
+    workbook_defaults["available"] = not missing_fields
+    return workbook_defaults
+
+
 def _normalize_stock_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize stock sheet column names to a predictable canonical shape."""
     if df.empty:
@@ -208,24 +309,34 @@ def load_networth_data(filename: str = "Networth.csv") -> pd.DataFrame:
         Preprocessed DataFrame with datetime month column and formatted strings
     """
     filepath = _resolve_raw_path(filename)
+    fallback_filepath = _resolve_raw_path("Investment.xlsx")
+    fallback_sheet = "long_data"
+    source_filepath = filepath
     
     try:
         data = pd.read_csv(filepath)
+    except FileNotFoundError:
+        source_filepath = fallback_filepath
+        data = _load_excel_sheet(fallback_filepath, fallback_sheet, "Net worth data")
+        if data.empty:
+            _show_missing_file_error(filepath, "Net worth data")
+            return EMPTY_DF.copy()
+    except Exception as e:
+        _show_load_error(filepath, "Net worth data", e)
+        return EMPTY_DF.copy()
+
+    try:
         data = _build_networth_account_identity(data)
-        
+
         # Process date and amount columns
         data[ColumnNames.MONTH] = pd.to_datetime(data[ColumnNames.MONTH])
         data[ColumnNames.AMOUNT] = data[ColumnNames.AMOUNT].round().astype(int)
         data[ColumnNames.MONTH_STR] = data[ColumnNames.MONTH].dt.strftime('%b-%Y')
         data = data.sort_values(ColumnNames.MONTH)
-        
+
         return data
-        
-    except FileNotFoundError:
-        _show_missing_file_error(filepath, "Net worth data")
-        return EMPTY_DF.copy()
     except Exception as e:
-        _show_load_error(filepath, "Net worth data", e)
+        _show_load_error(source_filepath, "Net worth data", e)
         return EMPTY_DF.copy()
 
 

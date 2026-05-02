@@ -10,6 +10,21 @@ pio.templates.default = ChartConfig.TEMPLATE
 from app_constants import ColumnNames
 import yfinance as yf
 
+PAYOUT_CHART_COLORS = {
+    "forest": "#0B6B4B",
+    "teal": "#2D8C74",
+    "sage": "#A9D5C3",
+    "sand": "#F6F1E8",
+    "stone": "#6B7280",
+    "ink": "#14213D",
+    "line": "#D7E6DE",
+    "principal": "#87C8B3",
+    "contribution": "#D8EDE4",
+    "return": "#0B6B4B",
+    "warning": "#B45309",
+    "danger": "#C2410C",
+}
+
 
 def _format_bar_value_label(value: float) -> str:
     """Format bar labels compactly so they fit cleanly above/outside bars."""
@@ -479,6 +494,162 @@ def create_top_accounts_chart(top_accounts, color_scheme='neutral'):
         hovertemplate='<b>%{y}</b><br>amount: $%{x:,.0f}<br>category: %{customdata}<extra></extra>'
     )
     
+    return fig
+
+
+def _format_payout_currency(value: float) -> str:
+    return f"${value:,.0f}"
+
+
+def _format_payout_inr_crore(value: float) -> str:
+    return f"₹{value / 10_000_000:,.2f} Cr"
+
+
+def _apply_payout_chart_theme(fig: go.Figure, *, height: int, yaxis_title: str, xaxis_title: Optional[str] = None) -> None:
+    fig.update_layout(
+        height=height,
+        margin=dict(l=20, r=20, t=16, b=20),
+        paper_bgcolor=PAYOUT_CHART_COLORS["sand"],
+        plot_bgcolor="#FCFAF6",
+        font=dict(color=PAYOUT_CHART_COLORS["ink"], size=13),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            bgcolor="rgba(0,0,0,0)",
+            title_text="",
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor=PAYOUT_CHART_COLORS["line"],
+            font=dict(color=PAYOUT_CHART_COLORS["ink"]),
+        ),
+        yaxis=dict(
+            title=yaxis_title,
+            gridcolor=PAYOUT_CHART_COLORS["line"],
+            zerolinecolor=PAYOUT_CHART_COLORS["line"],
+            tickfont=dict(color=PAYOUT_CHART_COLORS["stone"]),
+            title_font=dict(color=PAYOUT_CHART_COLORS["stone"]),
+        ),
+        xaxis=dict(
+            title=xaxis_title,
+            tickfont=dict(color=PAYOUT_CHART_COLORS["stone"]),
+            title_font=dict(color=PAYOUT_CHART_COLORS["stone"]),
+        ),
+    )
+
+
+def create_payout_total_outcome_chart(scenarios: List[Dict[str, Any]]) -> go.Figure:
+    labels = [str(scenario["label"]) for scenario in scenarios]
+    totals = [float(scenario["total_usd"]) for scenario in scenarios]
+    colors = [PAYOUT_CHART_COLORS["sage"], PAYOUT_CHART_COLORS["forest"]]
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=labels,
+                y=totals,
+                marker_color=colors[: len(labels)],
+                text=[_format_payout_currency(value) for value in totals],
+                textposition="outside",
+                customdata=[
+                    [_format_payout_inr_crore(float(scenario["total_inr"])), scenario["note"]]
+                    for scenario in scenarios
+                ],
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    "Net payout: %{text}<br>"
+                    "INR equivalent: %{customdata[0]}<br>"
+                    "%{customdata[1]}<extra></extra>"
+                ),
+            )
+        ]
+    )
+    _apply_payout_chart_theme(fig, height=380, yaxis_title="USD")
+    fig.update_layout(showlegend=False)
+    return fig
+
+
+def create_payout_mix_chart(scenarios: List[Dict[str, Any]], hsa_payout: float, vacation_payout: float) -> go.Figure:
+    labels = [str(scenario["label"]) for scenario in scenarios]
+    fig = go.Figure()
+    components = [
+        ("Cash / liquid assets", "liquidation_total", PAYOUT_CHART_COLORS["sand"]),
+        ("Taxable net", "taxable_net", "#BFDCCF"),
+        ("Retirement net", "retirement_net", PAYOUT_CHART_COLORS["forest"]),
+        ("HSA payout", hsa_payout, PAYOUT_CHART_COLORS["teal"]),
+        ("Vacation payout", vacation_payout, "#C7DCCF"),
+    ]
+    for name, key_or_value, color in components:
+        values = [float(key_or_value)] * len(labels) if isinstance(key_or_value, (int, float)) else [float(s[key_or_value]) for s in scenarios]
+        fig.add_bar(x=labels, y=values, name=name, marker_color=color, hovertemplate=f"{name}: %{{y:$,.0f}}<extra></extra>")
+    _apply_payout_chart_theme(fig, height=420, yaxis_title="USD")
+    fig.update_layout(barmode="stack")
+    return fig
+
+
+def create_payout_tax_drag_chart(scenarios: List[Dict[str, Any]]) -> go.Figure:
+    labels = [str(scenario["label"]) for scenario in scenarios]
+    fig = go.Figure()
+    taxes = [
+        ("Taxable gain tax", "taxable_tax", "#D6C4A8"),
+        ("Federal retirement tax", "retirement_federal_tax", PAYOUT_CHART_COLORS["warning"]),
+        ("State tax", "retirement_state_tax", "#D97706"),
+        ("Early withdrawal penalty", "retirement_penalty_tax", PAYOUT_CHART_COLORS["danger"]),
+    ]
+    for name, key, color in taxes:
+        fig.add_bar(x=labels, y=[float(scenario[key]) for scenario in scenarios], name=name, marker_color=color, hovertemplate=f"{name}: %{{y:$,.0f}}<extra></extra>")
+    _apply_payout_chart_theme(fig, height=420, yaxis_title="USD")
+    fig.update_layout(barmode="stack")
+    return fig
+
+
+def create_payout_rnor_advantage_chart(withdraw_now: Dict[str, Any], new_year_rnor: Dict[str, Any]) -> go.Figure:
+    taxable_savings = float(withdraw_now["taxable_tax"]) - float(new_year_rnor["taxable_tax"])
+    federal_savings = float(withdraw_now["retirement_federal_tax"]) - float(new_year_rnor["retirement_federal_tax"])
+    state_savings = float(withdraw_now["retirement_state_tax"]) - float(new_year_rnor["retirement_state_tax"])
+    penalty_savings = float(withdraw_now["retirement_penalty_tax"]) - float(new_year_rnor["retirement_penalty_tax"])
+    fig = go.Figure(
+        go.Waterfall(
+            x=["Withdraw Now", "Taxable tax saved", "Federal tax saved", "State tax change", "Penalty change", "New Year RNOR"],
+            measure=["absolute", "relative", "relative", "relative", "relative", "absolute"],
+            y=[
+                float(withdraw_now["total_usd"]),
+                taxable_savings,
+                federal_savings,
+                state_savings,
+                penalty_savings,
+                float(new_year_rnor["total_usd"]),
+            ],
+            connector={"line": {"color": "#7C746A"}},
+            increasing={"marker": {"color": PAYOUT_CHART_COLORS["forest"]}},
+            decreasing={"marker": {"color": PAYOUT_CHART_COLORS["danger"]}},
+            totals={"marker": {"color": PAYOUT_CHART_COLORS["sage"]}},
+            text=[
+                _format_payout_currency(float(withdraw_now["total_usd"])),
+                _format_payout_currency(taxable_savings),
+                _format_payout_currency(federal_savings),
+                _format_payout_currency(state_savings),
+                _format_payout_currency(penalty_savings),
+                _format_payout_currency(float(new_year_rnor["total_usd"])),
+            ],
+            textposition="outside",
+            hovertemplate="%{x}: %{text}<extra></extra>",
+        )
+    )
+    _apply_payout_chart_theme(fig, height=420, yaxis_title="USD")
+    fig.update_layout(showlegend=False)
+    return fig
+
+
+def create_payout_rnor_projection_chart(projection_df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=projection_df["Year"], y=projection_df["Principal Crores"], name="Invested principal", marker_color=PAYOUT_CHART_COLORS["principal"], marker_line_color="#78B5A1", marker_line_width=1, hovertemplate="Year %{x}<br>Principal: ₹%{y:.2f} Cr<extra></extra>"))
+    fig.add_trace(go.Bar(x=projection_df["Year"], y=projection_df["Contributions Crores"], name="Monthly contributions", marker_color=PAYOUT_CHART_COLORS["contribution"], marker_line_color="#BDD9CC", marker_line_width=1, hovertemplate="Year %{x}<br>Contributions: ₹%{y:.2f} Cr<extra></extra>"))
+    fig.add_trace(go.Bar(x=projection_df["Year"], y=projection_df["Return Crores"], name="Accumulated return", marker_color=PAYOUT_CHART_COLORS["return"], marker_line_color="#09553B", marker_line_width=1, hovertemplate="Year %{x}<br>Return: ₹%{y:.2f} Cr<extra></extra>"))
+    _apply_payout_chart_theme(fig, height=440, yaxis_title="INR (Crores)", xaxis_title="Years After Withdrawal")
+    fig.update_layout(barmode="stack", bargap=0.18)
     return fig
 
 def create_portfolio_value_chart(df, date_col='Date', value_col='Current Value'):
